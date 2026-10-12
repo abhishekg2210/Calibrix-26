@@ -106,13 +106,70 @@
           <div><span class="eyebrow">ROAD INTELLIGENCE</span>
             <h2>Hazard & entity monitor</h2>
           </div>
-          <div class="header-action-group"><button class="text-button" id="reportHazardBtn">+ Form</button><button
-              class="text-button danger-text" id="clearHazardsSidebarBtn">Clear</button></div>
+          <div class="header-action-group">
+            <button class="text-button" id="reportHazardBtn" title="Open coordinate form">+ Form</button>
+            <button class="text-button danger-text" id="clearHazardsSidebarBtn" title="Clear all placed entities">Clear</button>
+          </div>
         </div>
-        <div class="hazard-disclaimer">Interactive AI perception simulation: Add obstacles, moving pedestrians,
-          construction, or road blocks directly onto the Leaflet map for project review.</div>
+        <div class="hazard-disclaimer">Interactive AI perception: Click any entity below to spawn on active route corridor, or toggle map-click placement.</div>
+        
+        <!-- Quick Entity Insertion Buttons in Sidebar -->
+        <div class="sidebar-entity-grid" id="sidebarEntityGrid">
+          <button type="button" class="sidebar-entity-btn" id="sidebarAddObstacle" data-type="Obstacle" title="Add Obstacle (pothole, debris) - Vehicle slows down safely, NO rerouting">
+            <span class="entity-btn-icon">⚠️</span>
+            <div class="entity-btn-text">
+              <strong>Obstacle</strong>
+              <small>Pothole / Debris · Slows to 32 km/h</small>
+            </div>
+            <span class="entity-action-badge">+ Drop</span>
+          </button>
+          <button type="button" class="sidebar-entity-btn highlight-pedestrian" id="sidebarAddPedestrian" data-type="Pedestrian Moving" title="Add Moving Pedestrian - Vehicle stops at 0 km/h and waits until crossed!">
+            <span class="entity-btn-icon">🚶</span>
+            <div class="entity-btn-text">
+              <strong>Pedestrian</strong>
+              <small>Crosswalk · Stops (0 km/h) & Waits</small>
+            </div>
+            <span class="entity-action-badge pedestrian">+ Drop</span>
+          </button>
+          <button type="button" class="sidebar-entity-btn highlight-animal" id="sidebarAddAnimal" data-type="Animal Crossing" title="Add Stray Animal / Cattle - Vehicle stops at 0 km/h and waits until clear">
+            <span class="entity-btn-icon">🐕</span>
+            <div class="entity-btn-text">
+              <strong>Stray Animal</strong>
+              <small>Cattle Crossing · Stops & Waits</small>
+            </div>
+            <span class="entity-action-badge animal">+ Drop</span>
+          </button>
+          <button type="button" class="sidebar-entity-btn highlight-construction" id="sidebarAddConstruction" data-type="Construction Working" title="Add Construction Work Zone - Triggers automatic corridor rerouting!">
+            <span class="entity-btn-icon">🚧</span>
+            <div class="entity-btn-text">
+              <strong>Construction</strong>
+              <small>Work Zone · Auto-Reroutes Corridor</small>
+            </div>
+            <span class="entity-action-badge construction">Reroute</span>
+          </button>
+          <button type="button" class="sidebar-entity-btn highlight-blocked" id="sidebarAddRoadBlocked" data-type="Road Blocked" title="Add Road Blockage - Corridor impassable, triggers immediate bypass reroute!">
+            <span class="entity-btn-icon">⛔</span>
+            <div class="entity-btn-text">
+              <strong>Road Blocked</strong>
+              <small>Closure Barricade · Auto-Reroute</small>
+            </div>
+            <span class="entity-action-badge blocked">Reroute</span>
+          </button>
+        </div>
+
+        <div class="sidebar-placement-toolbar">
+          <button type="button" class="sidebar-action-pill" id="sidebarTogglePlacement" title="Toggle clicking custom location on map">
+            <span class="pill-icon">📍</span>
+            <span id="placementToggleLabel">Click Map to Place</span>
+          </button>
+          <button type="button" class="sidebar-action-pill highlight" id="sidebarQuickAddRoute" title="Drop selected entity ahead on current active route">
+            <span class="pill-icon">⚡</span>
+            <span>Drop on Route</span>
+          </button>
+        </div>
+
         <div id="hazardList" class="hazard-list">
-          <div class="empty-inline">No active entities on map. Use the toolbar above map or click to insert.</div>
+          <div class="empty-inline">No active entities on map. Click an entity button above to insert.</div>
         </div>
         <div class="panel report-panel" id="reportPanel" hidden>
           <div class="panel-title">Report a road entity / hazard</div><label>TYPE<select id="hazardType">
@@ -298,8 +355,10 @@
             <div><span>ACCEL a</span><b id="vibrationVal">0.0 m/s²</b></div>
             <div><span>DECISION</span><b id="updateVal">NOMINAL</b></div>
           </div>
-          <div class="vehicle-buttons"><button class="secondary-button" id="trackBtn">Start GPS Route</button><button
-              class="secondary-button" id="stopTrackBtn">Stop</button></div>
+          <div class="vehicle-buttons">
+            <button class="primary-button small" id="trackBtn" style="margin-top:0" title="Start autonomous kinematic drive along the calculated corridor">▶ Start GPS Route</button>
+            <button class="secondary-button" id="stopTrackBtn" title="Stop autonomous vehicle and reset to origin">■ Stop</button>
+          </div>
           <div class="source-note" id="sourceNote">Pure Software Kinematic Simulation & Planner (100% Software - No Hardware Required).</div>
         </div>
         <div class="section-heading compact rail-section">
@@ -308,13 +367,13 @@
           </div><span class="demo-label">SIMULATED</span>
         </div>
         <div class="sensor-list">
-          <div class="sensor-row"><span class="sensor-symbol">◉</span>
+          <div class="sensor-row clickable" id="sensorCameraRow" title="Click to test camera perception classification"><span class="sensor-symbol">◉</span>
             <div><b>Camera</b><small>Virtual object classification</small></div><span class="sensor-state">DEMO</span>
           </div>
-          <div class="sensor-row"><span class="sensor-symbol">⌁</span>
+          <div class="sensor-row clickable" id="sensorLidarRow" title="Click to test LiDAR range point cloud scan"><span class="sensor-symbol">⌁</span>
             <div><b>LiDAR</b><small>Virtual range scan</small></div><span class="sensor-state">DEMO</span>
           </div>
-          <div class="sensor-row"><span class="sensor-symbol">⌖</span>
+          <div class="sensor-row clickable" id="sensorRadarRow" title="Click to test Doppler velocity radar tracking"><span class="sensor-symbol">⌖</span>
             <div><b>Radar</b><small>Virtual motion tracking</small></div><span class="sensor-state">DEMO</span>
           </div>
         </div>

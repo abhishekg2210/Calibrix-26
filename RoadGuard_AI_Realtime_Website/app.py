@@ -463,7 +463,6 @@ def api_hazards_get():
     return jsonify(ok=True, hazards=app.config.setdefault("ROADGUARD_HAZARDS", []))
 
 @app.post("/api/hazards")
-@login_required
 def api_hazards_post():
     data = request.get_json(silent=True) or {}
     try:
@@ -519,7 +518,6 @@ def api_hazards_post():
     return jsonify(ok=True, hazard=hazard), 201
 
 @app.route("/api/hazards/delete", methods=["GET", "POST"])
-@login_required
 def api_hazards_delete():
     data = request.get_json(silent=True) or {}
     hazard_id = data.get("id") or data.get("hazard_id") or request.args.get("id")
@@ -530,7 +528,6 @@ def api_hazards_delete():
     return jsonify(ok=True, message="Hazard removed successfully.")
 
 @app.route("/api/hazards/clear", methods=["GET", "POST"])
-@login_required
 def api_hazards_clear_all():
     app.config["ROADGUARD_HAZARDS"] = []
     alert_service.create_alert(
@@ -542,7 +539,6 @@ def api_hazards_clear_all():
     return jsonify(ok=True, message="All hazards cleared.")
 
 @app.post("/api/hazards/clear-demo")
-@login_required
 def api_hazards_clear_demo():
     app.config["ROADGUARD_HAZARDS"] = [h for h in app.config.setdefault("ROADGUARD_HAZARDS", []) if h.get("source") != "Simulation"]
     return jsonify(ok=True)

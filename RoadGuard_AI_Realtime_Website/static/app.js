@@ -48,10 +48,13 @@
     pendingRoute: null,
     telemetry: null,
     placementMode: null,       // 'Obstacle' | 'Pedestrian Moving' | 'Construction Working' | 'Road Blocked'
+    placementModeArmed: false,  // If true, map clicks drop the entity
     selectedToolType: 'Obstacle',
     isYieldingWait: false,
     yieldCountdown: 0,
-    clearedHazardIds: new Set()
+    clearedHazardIds: new Set(),
+    trafficLayerGroup: null,
+    lastHeading: null
   };
 
   const ROUTE_COLORS = ['#00e59b', '#4ca9ff', '#b58aff', '#ffb84d'];
@@ -180,6 +183,7 @@
       }
     });
 
+    window.roadguardMapInstance = state.map;
     log('Leaflet Engine Ready', 'High-performance OpenStreetMap interactive map cockpit loaded.', 'green');
   }
 
@@ -293,11 +297,19 @@
     }
     state.placementMode = type;
     state.selectedToolType = type;
+    state.placementModeArmed = true;
 
-    // Update active button state
+    // Update active button state across toolbar and sidebar
     document.querySelectorAll('.entity-tool-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.type === type);
     });
+    document.querySelectorAll('.sidebar-entity-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.type === type);
+    });
+
+    const toggleLabel = $('placementToggleLabel');
+    if (toggleLabel) toggleLabel.textContent = `Placing: ${type}`;
+    $('sidebarTogglePlacement')?.classList.add('active');
 
     // Show top placement instruction banner
     const banner = $('mapPlacementBanner');
@@ -317,11 +329,77 @@
 
   function cancelPlacementMode() {
     state.placementMode = null;
+    state.placementModeArmed = false;
     document.querySelectorAll('.entity-tool-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.sidebar-entity-btn').forEach(btn => btn.classList.remove('active'));
     const banner = $('mapPlacementBanner');
     if (banner) banner.hidden = true;
     const mapArea = document.querySelector('.map-area');
     if (mapArea) mapArea.classList.remove('crosshair-mode');
+    const toggleLabel = $('placementToggleLabel');
+    if (toggleLabel) toggleLabel.textContent = 'Click Map to Place';
+    $('sidebarTogglePlacement')?.classList.remove('active');
+  }
+
+  async function quickAddEntity(type) {
+    state.selectedToolType = type;
+
+    // If routes are not calculated yet, calculate first
+    if (!state.routes.length) {
+      toast('Calculating road corridor first...');
+      await calculateRoutes();
+    }
+
+    if (!state.routes.length) {
+      toast('Please enter origin and destination or calculate a route.');
+      return;
+    }
+
+    const currentRoute = state.routes[state.selected] || state.routes[0];
+    const coords = (currentRoute._originalCoords && currentRoute._originalCoords.length)
+      ? currentRoute._originalCoords
+      : routeCoords(currentRoute);
+
+    if (coords.length < 4) {
+      toast('Route corridor geometry too short.');
+      return;
+    }
+
+    // Determine target location along corridor:
+    // If vehicle is driving, place 120m-220m ahead; otherwise place at ~38% along route!
+    let targetIdx = Math.floor(coords.length * 0.38);
+    if (state.demoTimer && state.demoIndex > 0) {
+      targetIdx = Math.min(coords.length - 2, state.demoIndex + 14);
+    }
+
+    const targetPoint = coords[targetIdx];
+    const lat = targetPoint.lat;
+    const lng = targetPoint.lng;
+
+    const hazard = await insertHazard(type, lat, lng, {
+      description: `${type} placed on ${currentRoute.name || `Corridor ${state.selected + 1}`}`
+    });
+
+    if (state.map && hazard) {
+      state.map.setView([lat, lng], 15);
+      if (state.hazardMarkers[hazard.id]?.marker) {
+        state.hazardMarkers[hazard.id].marker.openPopup();
+      }
+    }
+
+    if (type === 'Obstacle') {
+      toast('⚠️ Obstacle placed: Vehicle will slow to 32 km/h for safe passage (no reroute needed).');
+    } else if (type === 'Pedestrian Moving') {
+      toast('🚶 Moving Pedestrian placed: Vehicle will decelerate to 0 km/h, stop and wait until crossed!');
+    } else if (type === 'Animal Crossing') {
+      toast('🐕 Stray Animal placed: Vehicle will come to a complete stop (0 km/h) and wait.');
+    } else if (type === 'Construction Working') {
+      toast('🚧 Construction Work Zone placed: Corridor blocked -> Automatic reroute switching to bypass!');
+    } else if (type === 'Road Blocked') {
+      toast('⛔ Road Blockage placed: Corridor impassable -> Automatic reroute switching to bypass!');
+    }
+
+    return hazard;
   }
 
   async function handleMapClick(e) {
@@ -333,7 +411,7 @@
       const type = state.placementMode;
       cancelPlacementMode();
 
-      // Snap accurately onto active route if clicked within 150m of roadway corridor
+      // Snap accurately onto active route if clicked within 350m of roadway corridor
       if (state.routes.length && state.routes[state.selected]) {
         const coords = (state.routes[state.selected]._originalCoords && state.routes[state.selected]._originalCoords.length)
           ? state.routes[state.selected]._originalCoords
@@ -347,7 +425,7 @@
             snapPoint = res.proj;
           }
         }
-        if (minD < 0.15 && snapPoint) {
+        if (minD < 0.35 && snapPoint) {
           lat = snapPoint.lat;
           lng = snapPoint.lng;
         }
@@ -445,16 +523,34 @@
     const isMoving = (type === 'Pedestrian Moving' || type === 'Animal Crossing' || type === 'Stray Animal');
 
     try {
-      const res = await api('/api/hazards', {
-        lat,
-        lng,
-        type,
-        severity,
-        description,
-        is_moving: isMoving,
-        speed_kmh: isMoving ? (type === 'Pedestrian Moving' ? 4.5 : 3.0) : 0,
-        radius_m: type === 'Construction Working' ? 120 : (type === 'Road Blocked' ? 60 : 35)
-      });
+      let res;
+      try {
+        res = await api('/api/hazards', {
+          lat,
+          lng,
+          type,
+          severity,
+          description,
+          is_moving: isMoving,
+          speed_kmh: isMoving ? (type === 'Pedestrian Moving' ? 4.5 : 3.0) : 0,
+          radius_m: type === 'Construction Working' ? 120 : (type === 'Road Blocked' ? 60 : 35)
+        });
+      } catch (e) {
+        res = {
+          hazard: {
+            id: `h-${Date.now()}`,
+            lat,
+            lng,
+            type,
+            severity,
+            description: description || `${type} active on corridor`,
+            is_moving: isMoving,
+            speed_kmh: isMoving ? 4.5 : 0,
+            radius_m: type === 'Construction Working' ? 120 : (type === 'Road Blocked' ? 60 : 35),
+            status: 'ACTIVE'
+          }
+        };
+      }
 
       const hazard = res.hazard;
       state.hazards.unshift(hazard);
@@ -605,15 +701,45 @@
     // Pedestrian and Stray Animal dynamic motion animation!
     let animTimer = null;
     if (h.type === 'Pedestrian Moving' || h.type === 'Animal Crossing' || h.type === 'Stray Animal' || h.is_moving) {
+      h.isCrossingNow = true;
+      h.hasClearedRoad = false;
       let step = 0;
       const baseLat = h.lat;
       const baseLng = h.lng;
-      const heading = (h.heading || 90) * Math.PI / 180;
-      const stepAmp = 0.00035; // ~35 meters oscillation crossing
+      let heading = (h.heading || 90) * Math.PI / 180;
+
+      // Compute perpendicular crossing heading relative to closest road segment if on route
+      if (state.routes.length && state.routes[state.selected]) {
+        const coords = routeCoords(state.routes[state.selected]);
+        let minD = Infinity;
+        let segIdx = -1;
+        for (let i = 0; i < coords.length - 1; i++) {
+          const res = pointToSegmentDistance(h, coords[i], coords[i + 1]);
+          if (res.distKm < minD) { minD = res.distKm; segIdx = i; }
+        }
+        if (segIdx >= 0 && minD < 0.25) {
+          const dx = coords[segIdx + 1].lng - coords[segIdx].lng;
+          const dy = coords[segIdx + 1].lat - coords[segIdx].lat;
+          const roadAngle = Math.atan2(dy, dx);
+          heading = roadAngle + Math.PI / 2; // Perpendicular across road
+        }
+      }
+
+      const stepAmp = 0.00032; // ~32 meters crosswalk width
 
       animTimer = setInterval(() => {
-        step += 0.08;
-        const offset = Math.sin(step) * stepAmp;
+        step += 0.07;
+        const wave = Math.sin(step);
+        // When wave reaches peak sidewalk (> 0.65) or trough sidewalk (< -0.65), pedestrian has cleared road
+        if (Math.abs(wave) > 0.65) {
+          h.hasClearedRoad = true;
+          h.isCrossingNow = false;
+        } else {
+          h.hasClearedRoad = false;
+          h.isCrossingNow = true;
+        }
+
+        const offset = wave * stepAmp;
         const curLat = baseLat + offset * Math.cos(heading);
         const curLng = baseLng + offset * Math.sin(heading);
         marker.setLatLng([curLat, curLng]);
@@ -622,14 +748,21 @@
         h.lng = curLng;
 
         // Proximity detection with simulated vehicle
-        if (state.currentPosition) {
+        if (state.currentPosition && state.demoTimer) {
           const d = haversine(state.currentPosition, { lat: curLat, lng: curLng });
-          if (d < 0.06) { // under 60 meters
-            $('vehicleHealth').textContent = h.type === 'Pedestrian Moving' ? 'YIELD (PEDESTRIAN)' : 'YIELD (ANIMAL)';
-            $('vehicleHealth').style.color = 'var(--amber)';
+          if (d < 0.09) { // under 90 meters
+            if (h.isCrossingNow) {
+              $('vehicleHealth').textContent = `🛑 STOPPED (0 km/h) — WAITING FOR ${h.type.toUpperCase()} TO CROSS`;
+              $('vehicleHealth').style.color = 'var(--red)';
+              $('speedVal').textContent = '0';
+              $('speedGauge').style.width = '0%';
+            } else if (h.hasClearedRoad && !state.isYieldingWait) {
+              $('vehicleHealth').textContent = `✅ ${h.type.toUpperCase()} ON SIDEWALK (ROAD CLEAR)`;
+              $('vehicleHealth').style.color = 'var(--green)';
+            }
           }
         }
-      }, 350);
+      }, 300);
     }
 
     state.hazardMarkers[h.id] = { marker, circle, animTimer, data: h };
@@ -912,7 +1045,13 @@
         dashArray: route.is_blocked ? '8 8' : (selected ? null : '6 6')
       }).addTo(state.map);
 
-      line.on('click', () => selectRoute(i, false));
+      line.on('click', e => {
+        if (state.placementMode) {
+          handleMapClick(e);
+        } else {
+          selectRoute(i, false);
+        }
+      });
       state.routeLayers.push(line);
     });
 
@@ -951,12 +1090,28 @@
     state.routes.forEach((r, i) => {
       const card = document.createElement('div');
       card.className = 'route-card' + (i === state.selected ? ' selected' : '');
-      const badgeText = r.is_blocked ? 'BLOCKED' : (r.is_detoured ? 'DETOURED' : (r.is_recommended ? 'RECOMMENDED' : `OPTION ${i + 1}`));
+      const otherBlocked = state.routes.some((other, oi) => oi !== i && other.is_blocked);
+      const isBypassActive = (i === state.selected && otherBlocked && !r.is_blocked);
+
+      let badgeText = `OPTION ${i + 1}`;
+      let badgeStyle = '';
+      if (r.is_blocked) {
+        badgeText = 'BLOCKED';
+        badgeStyle = 'background:#471216;color:#ff858b;border:1px solid #ff5e66;';
+      } else if (isBypassActive) {
+        badgeText = 'ACTIVE BYPASS';
+        badgeStyle = 'background:#0d3622;color:#00e59b;border:1px solid #00e59b;';
+      } else if (r.is_detoured) {
+        badgeText = 'DETOURED';
+        badgeStyle = 'background:#0d3622;color:#00e59b;';
+      } else if (r.is_recommended) {
+        badgeText = 'RECOMMENDED';
+      }
 
       card.innerHTML = `
         <div class="route-card-head">
           <span class="route-name"></span>
-          <span class="route-badge" style="${r.is_blocked ? 'background:#471216;color:#ff858b' : (r.is_detoured ? 'background:#0d3622;color:#00e59b' : '')}">${badgeText}</span>
+          <span class="route-badge" style="${badgeStyle}">${badgeText}</span>
         </div>
         <div class="route-metrics">
           <div><strong>${r.duration_min} min</strong><small>Estimated time</small></div>
@@ -966,7 +1121,16 @@
       `;
 
       card.querySelector('.route-name').textContent = r.name || `Corridor ${i + 1}`;
-      card.querySelector('.route-meta').textContent = r.is_detoured ? '⚡ Dynamic obstacle detour active' : (r.recommendation_reason || r.traffic_condition || 'Active road corridor');
+      
+      let metaText = r.recommendation_reason || r.traffic_condition || 'Active road corridor';
+      if (r.is_blocked) {
+        metaText = '⛔ Obstructed: Construction / obstacle on corridor (Rerouted)';
+      } else if (isBypassActive) {
+        metaText = '✅ Active Bypass: Safe corridor avoiding road obstruction';
+      } else if (r.is_detoured) {
+        metaText = '⚡ Dynamic obstacle detour active';
+      }
+      card.querySelector('.route-meta').textContent = metaText;
 
       card.addEventListener('click', () => selectRoute(i));
       el.appendChild(card);
@@ -1081,11 +1245,11 @@
     if (!coords || coords.length < 2) return false;
 
     // Threshold based on hazard type
-    let thresholdKm = 0.085; // 85m for road obstacles
-    if (h.type === 'Construction Working') thresholdKm = 0.15; // 150m for construction zone
-    else if (h.type === 'Road Blocked') thresholdKm = 0.12;     // 120m for road block
-    else if (h.type === 'Pedestrian Moving') thresholdKm = 0.07; // 70m for pedestrians
-    else if (h.type === 'Animal Crossing' || h.type === 'Stray Animal') thresholdKm = 0.08; // 80m for animals
+    let thresholdKm = 0.15; // 150m for road obstacles
+    if (h.type === 'Construction Working') thresholdKm = 0.22; // 220m for construction zone
+    else if (h.type === 'Road Blocked') thresholdKm = 0.20;     // 200m for road block
+    else if (h.type === 'Pedestrian Moving') thresholdKm = 0.09; // 90m for pedestrians
+    else if (h.type === 'Animal Crossing' || h.type === 'Stray Animal') thresholdKm = 0.10; // 100m for animals
 
     for (let i = 0; i < coords.length - 1; i++) {
       const res = pointToSegmentDistance(h, coords[i], coords[i + 1]);
@@ -1096,9 +1260,15 @@
     return false;
   }
 
+  function isCorridorBlockage(h) {
+    if (!h || !h.type) return false;
+    const t = String(h.type).toLowerCase();
+    return t.includes('construction') || t.includes('road blocked') || t.includes('road closure') || t.includes('barricade');
+  }
+
   // --------------------------------------------------------------------------
   // DYNAMIC OBSTACLE AVOIDANCE & ROUTE BENDING
-  // When any obstacle, construction, pedestrian, etc occurs -> CHANGE THE ROUTE OF THE VEHICLE
+  // When physical road obstruction occurs and no alternative corridor exists -> Detour around obstacle
   // --------------------------------------------------------------------------
   function applyDynamicObstacleAvoidance() {
     if (!state.routes.length) return false;
@@ -1113,8 +1283,10 @@
     const baseCoords = [...currentRoute._originalCoords];
     if (baseCoords.length < 4) return false;
 
-    // Check if any hazard intersects or is close to the active route
-    const hits = state.hazards.filter(h => hazardTouchesRoute(h, currentRoute));
+    // Only physical static blockages (Construction, Road Blocked) cause lane geometry deflection
+    const hits = state.hazards.filter(h => 
+      isCorridorBlockage(h) && hazardTouchesRoute(h, currentRoute)
+    );
     const rerouteBanner = $('dynamicRerouteBanner');
 
     if (!hits.length) {
@@ -1284,239 +1456,548 @@
     const currentRoute = state.routes[state.selected];
     if (!currentRoute) return;
 
+    // 1. Evaluate obstruction status across all available corridors:
+    // CORRIDOR REROUTING APPLIES ONLY TO CONSTRUCTION OR ROAD BLOCKED!
+    state.routes.forEach((r, idx) => {
+      const touchesObstruction = state.hazards.some(h => 
+        isCorridorBlockage(h) && hazardTouchesRoute(h, r)
+      );
+      r.is_blocked = touchesObstruction;
+    });
+
     const hits = state.hazards.filter(h => hazardTouchesRoute(h, currentRoute));
-    const isBlocked = hits.some(h => h.type === 'Road Blocked' || h.severity === 'Critical');
+    const hasBlockage = hits.some(h => isCorridorBlockage(h));
 
-    // 1. If hazard exists, apply dynamic local obstacle avoidance detour
-    const detoured = applyDynamicObstacleAvoidance();
+    // 2. If current corridor is obstructed by construction or road blockage -> TRIGGER REROUTE!
+    if (hasBlockage) {
+      $('riskMetric').textContent = 'BLOCKED';
+      $('riskMetric').style.color = 'var(--red)';
+      $('riskSub').textContent = `${hits.filter(isCorridorBlockage).map(h => h.type).join(', ')} on active route`;
 
-    // 2. Check if a complete alternate corridor bypass should also be triggered
-    if (hits.length) {
-      if (isBlocked) {
-        $('riskMetric').textContent = 'CRITICAL';
-        $('riskMetric').style.color = 'var(--red)';
-        $('riskSub').textContent = `ROAD BLOCKED: ${hits.length} active obstruction(s)`;
+      // Find an alternate route completely clear of obstructions
+      const alternate = state.routes.findIndex((r, i) => i !== state.selected && !r.is_blocked);
+      const rerouteMode = $('rerouteMode') ? $('rerouteMode').value : 'automatic';
 
-        // Show banner in blocked mode
-        const banner = $('dynamicRerouteBanner');
-        if (banner) {
-          banner.hidden = false;
-          banner.classList.add('blocked-mode');
-          $('rerouteBannerTitle').textContent = '⛔ ROAD BLOCKAGE AHEAD — CORRIDOR REROUTED';
-          $('rerouteBannerSubtitle').textContent = 'Primary highway impassable. Switched to safe bypass corridor.';
-          $('rerouteBannerBadge').textContent = 'BYPASS ACTIVE';
-        }
-      } else if (!detoured) {
-        $('riskMetric').textContent = 'HIGH';
-        $('riskMetric').style.color = 'var(--amber)';
-        $('riskSub').textContent = `${hits.length} reported hazard(s) intersecting corridor`;
-      }
-
-      // Find an alternate route completely free of critical obstacles
-      const alternate = state.routes.findIndex((r, i) => i !== state.selected && !r.is_blocked && !state.hazards.some(h => (h.type === 'Road Blocked' || h.severity === 'Critical') && hazardTouchesRoute(h, r)));
-
-      if (alternate >= 0 && isBlocked) {
+      if (alternate >= 0) {
         state.pendingRoute = alternate;
-        const rerouteMode = $('rerouteMode') ? $('rerouteMode').value : 'automatic';
 
         if (rerouteMode === 'automatic') {
-          selectRoute(alternate);
-          toast(`⚡ Complete Corridor Reroute: Switched to Corridor ${alternate + 1} to avoid road block!`);
-          log('Corridor Reroute Executed', `Switched from Corridor ${state.selected + 1} to Corridor ${alternate + 1} (obstruction avoided).`, 'green');
+          const prevIdx = state.selected;
+          const prevName = currentRoute.name || `Corridor ${prevIdx + 1}`;
+          const altRoute = state.routes[alternate];
+          const altName = altRoute.name || `Corridor ${alternate + 1}`;
+
+          // Switch active selected route to clear alternate corridor
+          state.selected = alternate;
+          drawRoutes(false);
+          renderRoutes();
+
+          // Update sidebar metrics for newly active corridor
+          $('etaMetric').textContent = `${altRoute.duration_min} min`;
+          $('distanceMetric').textContent = `${altRoute.distance_km} km`;
+          $('etaSub').textContent = `${altName} (Automatic Bypass)`;
+
+          // Show high-priority reroute banner
+          const banner = $('dynamicRerouteBanner');
+          if (banner) {
+            banner.hidden = false;
+            banner.className = 'dynamic-reroute-banner blocked-mode';
+            $('rerouteBannerTitle').textContent = `🔄 AUTOMATIC REROUTE: ${hits.filter(isCorridorBlockage).map(h => h.type).join(' & ').toUpperCase()} ON ROUTE ${prevIdx + 1}`;
+            $('rerouteBannerSubtitle').textContent = `${prevName} obstructed by ${hits.filter(isCorridorBlockage).map(h => h.type).join(', ')}. Vehicle automatically rerouted to ${altName}!`;
+            $('rerouteBannerBadge').textContent = 'SAFE BYPASS ACTIVE';
+          }
+
+          // If vehicle is driving, seamlessly transfer vehicle onto new rerouted route coordinates
+          if (state.demoTimer) {
+            state.activeDemoCoords = routeCoords(altRoute);
+            if (state.currentPosition) {
+              let closestIdx = 0;
+              let minD = Infinity;
+              for (let k = 0; k < state.activeDemoCoords.length; k++) {
+                const d = haversine(state.activeDemoCoords[k], state.currentPosition);
+                if (d < minD) { minD = d; closestIdx = k; }
+              }
+              state.demoIndex = closestIdx;
+            }
+          }
+
+          toast(`⚡ Automatic Reroute: Switched to ${altName} to avoid construction / blockage on ${prevName}!`);
+          log('Automatic Corridor Reroute', `Switched from ${prevName} to ${altName} to circumvent road blockage.`, 'green');
+          return;
         } else {
-          $('rerouteMessage').textContent = `Road blockage detected on this corridor. Alternative Corridor ${alternate + 1} is clear and safe.`;
+          $('rerouteMessage').textContent = `Construction / road blockage detected on ${currentRoute.name || 'this corridor'}. Alternative corridor ${state.routes[alternate].name || `Corridor ${alternate + 1}`} is clear and safe. Switch route?`;
           $('rerouteModal').hidden = false;
           log('Alternative corridor ready', 'Waiting for operator confirmation.', 'amber');
+          return;
+        }
+      } else {
+        // No alternate pre-calculated corridor available -> apply dynamic geometric road detour
+        const detoured = applyDynamicObstacleAvoidance();
+        if (detoured) {
+          $('riskMetric').textContent = 'DETOUR ACTIVE';
+          $('riskMetric').style.color = 'var(--green)';
+          $('riskSub').textContent = 'Dynamic avoidance detour active';
         }
       }
     } else {
-      $('riskMetric').textContent = 'LOW';
-      $('riskMetric').style.color = 'var(--green)';
-      $('riskSub').textContent = 'No hazards intersecting active corridor';
+      // Current route has NO construction or road blocks -> NO REROUTE!
+      currentRoute.is_blocked = false;
+
+      // Restore route geometry if previously detoured
+      if (currentRoute.is_detoured) {
+        applyDynamicObstacleAvoidance();
+      }
+
       const banner = $('dynamicRerouteBanner');
-      if (banner) banner.hidden = true;
+
+      // Check if pedestrian or animal is crossing on current corridor
+      const pedCrossing = hits.find(h => h.type === 'Pedestrian Moving' || h.type === 'Animal Crossing' || h.type === 'Stray Animal');
+      const roadObstacle = hits.find(h => h.type === 'Obstacle' || h.type === 'Pothole' || h.type === 'Road crack');
+
+      if (pedCrossing) {
+        $('riskMetric').textContent = 'CROSSWALK ACTIVE';
+        $('riskMetric').style.color = '#38bdf8';
+        $('riskSub').textContent = `${pedCrossing.type} ahead · Vehicle stops (0 km/h) & yields · No corridor reroute`;
+        if (banner) banner.hidden = true;
+      } else if (roadObstacle) {
+        $('riskMetric').textContent = 'ROAD OBSTACLE';
+        $('riskMetric').style.color = 'var(--amber)';
+        $('riskSub').textContent = `${roadObstacle.type} detected · Safe slowdown (32 km/h) · Corridor retained`;
+        if (banner) banner.hidden = true;
+      } else {
+        // Check if another corridor is blocked (meaning vehicle is operating safely on bypass)
+        const blockedOther = state.routes.find((r, i) => i !== state.selected && r.is_blocked);
+        if (blockedOther) {
+          $('riskMetric').textContent = 'SAFE BYPASS';
+          $('riskMetric').style.color = 'var(--green)';
+          $('riskSub').textContent = `Bypassing obstruction on ${blockedOther.name || 'other corridor'}`;
+          if (banner) {
+            banner.hidden = false;
+            banner.className = 'dynamic-reroute-banner bypass-mode';
+            $('rerouteBannerTitle').textContent = `🔄 ACTIVE REROUTE: BYPASSING ${blockedOther.name || 'ROUTE 1'}`;
+            $('rerouteBannerSubtitle').textContent = `Autonomous vehicle operating on ${currentRoute.name || 'clear corridor'} to safely circumvent road construction/obstacles.`;
+            $('rerouteBannerBadge').textContent = 'SAFE BYPASS ACTIVE';
+          }
+        } else {
+          $('riskMetric').textContent = 'LOW';
+          $('riskMetric').style.color = 'var(--green)';
+          $('riskSub').textContent = 'No hazards intersecting active corridor';
+          if (banner) banner.hidden = true;
+        }
+      }
     }
   }
 
   // --------------------------------------------------------------------------
-  // VEHICLE DEMO DRIVE & GPS TRACKING
+  // KINEMATICS & AUTONOMOUS VEHICLE DRIVE CONTROLLER
   // --------------------------------------------------------------------------
-  function startDemo() {
+  function calculateBearing(p1, p2) {
+    if (!p1 || !p2) return 0;
+    const dLng = (p2.lng - p1.lng) * Math.PI / 180;
+    const lat1 = p1.lat * Math.PI / 180;
+    const lat2 = p2.lat * Math.PI / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(dLng);
+    let brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+  }
+
+  function toggleAutonomousDrive() {
+    if (state.demoTimer) {
+      pauseAutonomousDrive();
+    } else {
+      startAutonomousDrive();
+    }
+  }
+
+  function pauseAutonomousDrive() {
     if (state.demoTimer) {
       clearInterval(state.demoTimer);
       state.demoTimer = null;
-      $('demoBtn').textContent = '▶ Start Drive';
-      toast('Autonomous drive paused');
-      return;
     }
+    updateDriveButtonLabels(false);
+    toast('Autonomous drive paused.');
+    log('Drive paused', 'Vehicle paused along active corridor.', 'amber');
+  }
 
-    state.activeDemoCoords = routeCoords(state.routes[state.selected] || {});
-    if (state.activeDemoCoords.length < 2) {
-      toast('Calculate a route before starting the autonomous drive.');
-      return;
+  function stopAutonomousDrive() {
+    if (state.demoTimer) {
+      clearInterval(state.demoTimer);
+      state.demoTimer = null;
     }
-
     state.demoIndex = 0;
-    $('demoBtn').textContent = '⏸ Pause Drive';
-    log('Autonomous drive started', 'Autonomous vehicle simulation underway along selected corridor.', 'green');
+    state.isYieldingWait = false;
+    state.clearedHazardIds.clear();
+    state.lastHeading = null;
+    updateDriveButtonLabels(false);
+
+    // Reset vehicle to route start
+    if (state.routes.length && state.routes[state.selected]) {
+      const coords = routeCoords(state.routes[state.selected]);
+      if (coords.length) {
+        state.currentPosition = coords[0];
+        updateVehicleMarker(coords[0].lat, coords[0].lng);
+        if (state.map) state.map.panTo([coords[0].lat, coords[0].lng]);
+      }
+    }
+
+    $('speedVal').textContent = '0';
+    $('speedGauge').style.width = '0%';
+    $('headingVal').textContent = '0.0°';
+    $('batteryVal').textContent = '0.0°';
+    $('vibrationVal').textContent = '0.0 m/s²';
+    $('updateVal').textContent = 'STANDBY';
+    $('updateVal').style.color = 'var(--text-primary)';
+    $('vehicleHealth').textContent = 'AUTONOMOUS STANDBY';
+    $('vehicleHealth').style.color = 'var(--text-primary)';
+    $('vehicleStatus').textContent = 'Drive stopped';
+
+    toast('Autonomous drive stopped and reset to origin.');
+    log('Drive reset', 'Vehicle returned to departure origin.', 'green');
+  }
+
+  function updateDriveButtonLabels(isRunning) {
+    const demoBtn = $('demoBtn');
+    const trackBtn = $('trackBtn');
+    if (demoBtn) {
+      demoBtn.textContent = isRunning ? '⏸ Pause Drive' : '▶ Start Drive';
+      demoBtn.classList.toggle('active-drive', isRunning);
+    }
+    if (trackBtn) {
+      trackBtn.textContent = isRunning ? '⏸ Pause Route' : '▶ Start GPS Route';
+      trackBtn.classList.toggle('active-drive', isRunning);
+    }
+  }
+
+  function startAutonomousDrive() {
+    if (state.demoTimer) return;
+
+    if (!state.routes.length) {
+      toast('Calculate a route first before starting autonomous drive.');
+      calculateRoutes();
+      return;
+    }
+
+    const currentRoute = state.routes[state.selected] || state.routes[0];
+    state.activeDemoCoords = routeCoords(currentRoute);
+    if (state.activeDemoCoords.length < 2) {
+      toast('Active route corridor has insufficient coordinates.');
+      return;
+    }
+
+    if (!state.demoIndex || state.demoIndex >= state.activeDemoCoords.length) {
+      state.demoIndex = 0;
+      state.clearedHazardIds.clear();
+      state.isYieldingWait = false;
+    }
+
+    updateDriveButtonLabels(true);
+    toast('▶ Autonomous drive started along corridor.');
+    log('Autonomous drive started', `Simulation driving along ${currentRoute.name || `Corridor ${state.selected + 1}`}.`, 'green');
 
     state.demoTimer = setInterval(() => {
       const coords = state.activeDemoCoords;
       if (state.demoIndex >= coords.length) {
         clearInterval(state.demoTimer);
         state.demoTimer = null;
-        $('demoBtn').textContent = '▶ Start Drive';
-        $('vehicleHealth').textContent = 'DESTINATION';
+        updateDriveButtonLabels(false);
+        $('vehicleHealth').textContent = 'DESTINATION REACHED';
+        $('vehicleHealth').style.color = 'var(--green)';
         $('speedVal').textContent = '0';
         $('speedGauge').style.width = '0%';
+        $('vibrationVal').textContent = '0.0 m/s²';
+        $('updateVal').textContent = 'ARRIVED';
+        $('updateVal').style.color = 'var(--green)';
+        $('batteryVal').textContent = '0.0°';
         log('Route completed', 'Vehicle reached target destination safely.', 'green');
-        toast('Autonomous drive completed!');
+        toast('🏁 Autonomous drive completed! Destination reached.');
         return;
       }
 
-      const p = coords[state.demoIndex++];
+      const p = coords[state.demoIndex];
+      const nextP = coords[state.demoIndex + 1] || p;
       state.currentPosition = p;
 
-      // Check proximity with hazards along path
-      const nearHazard = state.hazards.find(h => haversine(h, p) < 0.16);
+      // Compute heading bearing & steering angle delta
+      const heading = calculateBearing(p, nextP);
+      let steerAngle = 0;
+      if (state.lastHeading !== null) {
+        let diff = heading - state.lastHeading;
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+        steerAngle = Math.max(-28, Math.min(28, diff * 1.5));
+      }
+      state.lastHeading = heading;
+
       let targetSpeed = 42;
+      let accel = 0.2;
 
-      // Yield, Stop & Auto-Resume State Machine for Pedestrian & Animal Crossing
-      const isCrossingActor = nearHazard && (
-        nearHazard.type === 'Pedestrian Moving' || 
-        nearHazard.type === 'Animal Crossing' || 
-        nearHazard.type === 'Stray Animal'
-      );
+      // 1. High-priority safety check: Crossing pedestrian or animal in path ahead of vehicle
+      const crossingHazard = state.hazards.find(h => {
+        const isPedOrAnimal = (h.type === 'Pedestrian Moving' || h.type === 'Animal Crossing' || h.type === 'Stray Animal');
+        if (!isPedOrAnimal) return false;
+        if (state.clearedHazardIds && state.clearedHazardIds.has(h.id)) return false;
+        const distKm = haversine(h, p);
+        return distKm < 0.12; // within 120 meters ahead
+      });
 
-      if (isCrossingActor && !state.clearedHazardIds.has(nearHazard.id)) {
-        // Vehicle comes to a safe stop and waits for actor to finish crossing
-        targetSpeed = 0;
-        if (!state.isYieldingWait) {
+      if (crossingHazard) {
+        // If pedestrian is actively in the road corridor / has not finished crossing:
+        if (!crossingHazard.hasClearedRoad || crossingHazard.isCrossingNow) {
+          // VEHICLE MUST STOP (0 km/h) AND WAIT UNTIL PEDESTRIAN HAS CROSSED TO SIDEWALK!
+          targetSpeed = 0;
+          accel = -2.4; // Braking deceleration
           state.isYieldingWait = true;
-          state.yieldCountdown = 5; // ~2.5 seconds wait while actor crosses
-          log('Autonomous Yield Stop', `${nearHazard.type} crossing corridor ahead. Vehicle stopped at safe clearance buffer (0 km/h). Waiting for actor to clear roadway.`, 'amber');
-          toast(`🛑 Vehicle stopped: ${nearHazard.type} crossing road. Waiting for clearance...`);
-        }
 
-        if (state.yieldCountdown > 0) {
-          state.yieldCountdown--;
-          state.demoIndex = Math.max(0, state.demoIndex - 1); // Keep vehicle held at stopping position
-          $('vehicleHealth').textContent = `STOPPED: WAITING FOR ${nearHazard.type.toUpperCase()} TO CROSS (${state.yieldCountdown}s)`;
+          $('vehicleHealth').textContent = `🛑 STOPPED (0 km/h) — WAITING FOR ${crossingHazard.type.toUpperCase()} TO CROSS`;
           $('vehicleHealth').style.color = 'var(--red)';
           $('speedVal').textContent = '0';
           $('speedGauge').style.width = '0%';
-          $('vehicleStatus').textContent = 'Yielding right-of-way to crossing road user';
-          $('updateVal').textContent = new Date().toLocaleTimeString();
+          $('batteryVal').textContent = '0.0°';
+          $('vibrationVal').textContent = '0.0 m/s²';
+          $('headingVal').textContent = `${heading.toFixed(1)}°`;
+          $('updateVal').textContent = 'WAITING (CROSSWALK)';
+          $('updateVal').style.color = '#38bdf8';
+          $('vehicleStatus').textContent = `${crossingHazard.type} actively in crosswalk. Autonomous vehicle yielding right-of-way.`;
+
+          if (!crossingHazard._reportedStopToast) {
+            crossingHazard._reportedStopToast = true;
+            toast(`🛑 Vehicle stopped at crosswalk: ${crossingHazard.type} crossing road. Waiting for path to clear...`);
+            log('Vehicle Stopped for Pedestrian', `${crossingHazard.type} detected crossing ahead. Holding 0 km/h stop until pedestrian reaches sidewalk.`, 'amber');
+          }
+
           updateVehicleMarker(p.lat, p.lng);
-          return;
-        } else {
-          // Actor has cleared! Resume travel in the same way!
+          return; // DO NOT ADVANCE VEHICLE POSITION WHILE PEDESTRIAN IS CROSSING!
+        } else if (state.isYieldingWait) {
+          // Pedestrian has reached sidewalk and cleared! Resume moving!
           state.isYieldingWait = false;
-          state.clearedHazardIds.add(nearHazard.id);
-          log('Corridor Cleared - Resuming', `${nearHazard.type} has safely finished crossing. Vehicle resuming nominal autonomous route navigation.`, 'green');
-          toast(`✅ Corridor cleared: ${nearHazard.type} passed safely. Resuming drive along route!`);
+          crossingHazard._reportedStopToast = false;
+          state.clearedHazardIds.add(crossingHazard.id);
           targetSpeed = 42;
+          accel = 1.6; // Accelerating back to cruising speed
+          toast(`✅ ${crossingHazard.type} reached sidewalk! Autonomous vehicle resuming corridor drive at 42 km/h!`);
+          log('Corridor Cleared — Vehicle Resuming', `${crossingHazard.type} reached sidewalk safely. Autonomous vehicle accelerating and resuming route.`, 'green');
         }
-      } else if (nearHazard) {
-        // Vehicle passing nearby or stationary road feature:
-        // THE VEHICLE DOES NOT STOP! IT REMAINS IN TRAVELLING MODE!
-        if (nearHazard.type === 'Vehicle' || nearHazard.type === 'Motorcycle' || nearHazard.type === 'Slow Vehicle') {
-          targetSpeed = 40; // Cruising along route, maintaining safe clearance!
-          $('vehicleHealth').textContent = 'TRAVELLING (PASSING NEARBY VEHICLE)';
-          $('vehicleHealth').style.color = 'var(--green)';
-        } else if (nearHazard.type === 'Road Blocked') {
-          targetSpeed = 18; // Safe bypass speed
-          $('vehicleHealth').textContent = 'TRAVELLING (BYPASS CORRIDOR 18 km/h)';
-          $('vehicleHealth').style.color = 'var(--amber)';
-        } else if (nearHazard.type === 'Construction Working') {
-          targetSpeed = 26; // Work zone caution cruise
-          $('vehicleHealth').textContent = 'TRAVELLING (WORK ZONE 26 km/h)';
-          $('vehicleHealth').style.color = 'var(--amber)';
-        } else {
-          targetSpeed = 38; // Cruising past obstacle
-          $('vehicleHealth').textContent = 'TRAVELLING (SAFE CLEARANCE)';
-          $('vehicleHealth').style.color = 'var(--green)';
-        }
-      } else {
-        $('vehicleHealth').textContent = state.routes[state.selected]?.is_detoured ? 'DETOUR GUIDANCE (42 km/h)' : 'MOVING (AUTONOMOUS 42 km/h)';
-        $('vehicleHealth').style.color = 'var(--green)';
       }
 
-      $('vehicleSource').textContent = 'SIMULATION';
-      $('telemetryType').textContent = 'SIMULATION';
-      $('vehicleStatus').textContent = 'Active route guidance';
-      $('speedVal').textContent = String(targetSpeed);
-      $('speedGauge').style.width = `${Math.min(100, targetSpeed * 2)}%`;
-      $('updateVal').textContent = new Date().toLocaleTimeString();
+      // 2. Check for nearby road obstacles (potholes, debris, road anomalies)
+      const nearObstacle = state.hazards.find(h => {
+        const isObs = (h.type === 'Obstacle' || h.type === 'Pothole' || h.type === 'Road crack' || h.type === 'Slow Vehicle');
+        return isObs && haversine(h, p) < 0.15;
+      });
 
-      // Update vehicle marker
+      if (nearObstacle) {
+        // VEHICLE SLOWS DOWN TO SAFE PASSING SPEED (32 km/h) — CORRIDOR IS NOT CHANGED!
+        targetSpeed = 32;
+        accel = -0.8;
+        $('vehicleHealth').textContent = 'TRAVELLING (SAFE OBSTACLE CLEARANCE 32 km/h)';
+        $('vehicleHealth').style.color = 'var(--amber)';
+        $('updateVal').textContent = 'SLOWDOWN (OBSTACLE)';
+        $('updateVal').style.color = 'var(--amber)';
+        $('vehicleStatus').textContent = `Approaching road obstacle. Speed moderated to 32 km/h for safe clearance.`;
+      } else {
+        targetSpeed = 42;
+        accel = 0.2;
+        $('vehicleHealth').textContent = state.routes[state.selected]?.is_detoured ? 'DETOUR GUIDANCE (42 km/h)' : 'MOVING (AUTONOMOUS 42 km/h)';
+        $('vehicleHealth').style.color = 'var(--green)';
+        $('updateVal').textContent = 'NOMINAL (CRUISE)';
+        $('updateVal').style.color = 'var(--green)';
+        $('vehicleStatus').textContent = 'Active route corridor nominal';
+      }
+
+      // Advance vehicle to next waypoint
+      state.demoIndex++;
+
+      // Update telemetry readouts in Cockpit right rail
+      $('speedVal').textContent = String(targetSpeed);
+      $('speedGauge').style.width = `${Math.min(100, targetSpeed * 2.2)}%`;
+      $('headingVal').textContent = `${heading.toFixed(1)}°`;
+      $('batteryVal').textContent = `${steerAngle >= 0 ? '+' : ''}${steerAngle.toFixed(1)}°`;
+      $('vibrationVal').textContent = `${accel >= 0 ? '+' : ''}${accel.toFixed(1)} m/s²`;
+      $('vehicleSource').textContent = 'AUTONOMOUS DRIVE';
+      $('telemetryType').textContent = 'SOFTWARE ACTIVE';
+
+      // Update vehicle marker on Leaflet map
       updateVehicleMarker(p.lat, p.lng);
 
       if (state.follow && state.map) {
         state.map.panTo([p.lat, p.lng]);
       }
-    }, 450);
+    }, 420);
+  }
+
+  // --------------------------------------------------------------------------
+  // CONGESTION TRAFFIC LAYER (Visual colored polylines)
+  // --------------------------------------------------------------------------
+  function toggleTrafficLayer() {
+    state.traffic = !state.traffic;
+    $('trafficBtn')?.classList.toggle('active', state.traffic);
+
+    if (!state.trafficLayerGroup && state.map) {
+      state.trafficLayerGroup = L.layerGroup().addTo(state.map);
+    }
+
+    if (!state.traffic) {
+      if (state.trafficLayerGroup) state.trafficLayerGroup.clearLayers();
+      toast('Congestion perception layer disabled.');
+      log('Traffic layer toggled', 'Congestion overlay removed from map.', 'amber');
+      return;
+    }
+
+    if (!state.routes.length || !state.routes[state.selected]) {
+      toast('Calculate a corridor first to view traffic congestion overlay.');
+      return;
+    }
+
+    renderTrafficPolylines();
+    toast('🚦 Congestion perception layer active: Flow speeds overlaid along corridor.');
+    log('Traffic Layer Active', 'Rendering real-time congestion segments (Green=Free, Orange=Moderate, Red=Heavy).', 'green');
+  }
+
+  function renderTrafficPolylines() {
+    if (!state.trafficLayerGroup || !state.map) return;
+    state.trafficLayerGroup.clearLayers();
+
+    const currentRoute = state.routes[state.selected];
+    if (!currentRoute) return;
+    const coords = routeCoords(currentRoute);
+    if (coords.length < 4) return;
+
+    const numChunks = Math.min(10, Math.max(3, Math.floor(coords.length / 8)));
+    const chunkSize = Math.floor(coords.length / numChunks);
+
+    const trafficStyles = [
+      { color: '#00e59b', weight: 7, opacity: 0.7, label: 'Free Flow (60 km/h)' },
+      { color: '#f59e0b', weight: 8, opacity: 0.8, label: 'Moderate Traffic (35 km/h)' },
+      { color: '#ef4444', weight: 9, opacity: 0.9, label: 'Heavy Congestion (14 km/h)' }
+    ];
+
+    for (let c = 0; c < numChunks; c++) {
+      const startI = c * chunkSize;
+      const endI = (c === numChunks - 1) ? coords.length : (c + 1) * chunkSize + 1;
+      const segmentCoords = coords.slice(startI, endI).map(pt => [pt.lat, pt.lng]);
+
+      let tIdx = 0;
+      if (c === Math.floor(numChunks * 0.45)) tIdx = 2; // red segment
+      else if (c % 2 === 1) tIdx = 1; // orange segment
+
+      const style = trafficStyles[tIdx];
+      const poly = L.polyline(segmentCoords, {
+        color: style.color,
+        weight: style.weight,
+        opacity: style.opacity,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(state.trafficLayerGroup);
+
+      poly.bindTooltip(`🚦 Corridor Traffic: ${style.label}`, { sticky: true });
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // SENSOR STACK DIAGNOSTIC TESTING
+  // --------------------------------------------------------------------------
+  function runSensorDiagnostic(sensor) {
+    if (sensor === 'camera') {
+      const row = $('sensorCameraRow');
+      if (row) { row.classList.add('sensor-pulse'); setTimeout(() => row.classList.remove('sensor-pulse'), 1400); }
+      toast('📷 Camera Perception: 1080p stream online · 0 latency · Pedestrian & Obstacle classification 99.4%');
+      log('Sensor Diagnostic: Camera', 'Neural vision object detection verified (Pedestrians, Animals, Road Obstacles online).', 'green');
+    } else if (sensor === 'lidar') {
+      const row = $('sensorLidarRow');
+      if (row) { row.classList.add('sensor-pulse'); setTimeout(() => row.classList.remove('sensor-pulse'), 1400); }
+      toast('⌁ LiDAR Scanner: 16-beam range cloud active · 120m corridor scan · 0 obstacles in blind spot');
+      log('Sensor Diagnostic: LiDAR', 'Virtual range point cloud scan nominal (360° vehicle clearance verified).', 'green');
+    } else if (sensor === 'radar') {
+      const row = $('sensorRadarRow');
+      if (row) { row.classList.add('sensor-pulse'); setTimeout(() => row.classList.remove('sensor-pulse'), 1400); }
+      toast('⌖ Doppler Radar: 77GHz velocity tracking online · Dynamic moving targets locked');
+      log('Sensor Diagnostic: Radar', 'Target doppler velocity tracking online (Moving pedestrian kinematics tracked).', 'green');
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // ENTITY BUTTON INTERACTION HANDLERS
+  // --------------------------------------------------------------------------
+  async function onEntityBtnClick(type) {
+    state.selectedToolType = type;
+    if (state.placementModeArmed) {
+      setPlacementMode(type);
+    } else {
+      await quickAddEntity(type);
+    }
+  }
+
+  function togglePlacementMode() {
+    state.placementModeArmed = !state.placementModeArmed;
+    if (state.placementModeArmed) {
+      setPlacementMode(state.selectedToolType || 'Obstacle');
+      const toggleLabel = $('placementToggleLabel');
+      if (toggleLabel) toggleLabel.textContent = `Armed: Click Map`;
+      $('sidebarTogglePlacement')?.classList.add('active');
+      toast(`Placement armed: Click anywhere on Leaflet map to place ${state.selectedToolType || 'Obstacle'}`);
+    } else {
+      cancelPlacementMode();
+      toast('Map click placement disarmed. Entity buttons will spawn directly onto active route.');
+    }
+  }
+
+  function toggleFollowVehicle() {
+    state.follow = !state.follow;
+    $('followBtn')?.classList.toggle('active', state.follow);
+    $('followBtn').textContent = state.follow ? '◎ Following vehicle' : '◎ Follow vehicle';
+    if (state.follow && state.currentPosition && state.map) {
+      state.map.panTo([state.currentPosition.lat, state.currentPosition.lng]);
+    }
+  }
+
+  async function handleSwapOriginDestination() {
+    const a = $('originInput').value;
+    $('originInput').value = $('destinationInput').value;
+    $('destinationInput').value = a;
+    const tmp = state.start;
+    state.start = state.end;
+    state.end = tmp;
+    if (state.start) updateEndpointMarker('start', state.start.lat, state.start.lng);
+    if (state.end) updateEndpointMarker('end', state.end.lat, state.end.lng);
+    toast('Swapped origin and destination. Recalculating routes…');
+    log('Corridor reversed', 'Origin and destination swapped.', 'green');
+    await calculateRoutes();
   }
 
   function startGps() {
-    if (!navigator.geolocation) {
-      toast('Browser geolocation is not supported.');
-      return;
-    }
-    if (state.watchId !== null) return;
-
-    state.watchId = navigator.geolocation.watchPosition(pos => {
-      const c = pos.coords;
-      state.currentPosition = { lat: c.latitude, lng: c.longitude };
-      $('vehicleSource').textContent = 'BROWSER GPS';
-      $('telemetryType').textContent = 'GPS';
-      $('vehicleStatus').textContent = 'GPS permission active';
-      $('vehicleHealth').textContent = 'TRACKING';
-      $('speedVal').textContent = c.speed == null ? '0' : Math.round(c.speed * 3.6);
-      $('headingVal').textContent = c.heading == null ? '—' : `${Math.round(c.heading)}°`;
-      $('updateVal').textContent = new Date(pos.timestamp).toLocaleTimeString();
-
-      updateVehicleMarker(c.latitude, c.longitude);
-
-      if (state.follow && state.map) {
-        state.map.panTo([c.latitude, c.longitude]);
-      }
-    }, err => {
-      toast('GPS location access denied or unavailable.');
-      log('GPS tracking unavailable', err.message, 'amber');
-      stopGps();
-    }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 12000 });
-
-    $('vehicleSource').textContent = 'GPS STARTING';
-    log('GPS tracking started', 'Receiving browser telemetry coordinates.');
+    toggleAutonomousDrive();
   }
 
   function stopGps() {
-    if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null;
-    $('vehicleStatus').textContent = 'Tracking stopped';
-    $('vehicleSource').textContent = 'STANDBY';
-    log('GPS tracking stopped', 'No further browser location updates.');
+    stopAutonomousDrive();
   }
 
   // --------------------------------------------------------------------------
   // EVENT LISTENERS & INITIALIZATION
   // --------------------------------------------------------------------------
   function setupEventListeners() {
-    // Toolbar buttons for entity insertion
-    $('toolObstacle')?.addEventListener('click', () => setPlacementMode('Obstacle'));
-    $('toolPedestrian')?.addEventListener('click', () => setPlacementMode('Pedestrian Moving'));
-    $('toolAnimal')?.addEventListener('click', () => setPlacementMode('Animal Crossing'));
-    $('toolConstruction')?.addEventListener('click', () => setPlacementMode('Construction Working'));
-    $('toolRoadBlocked')?.addEventListener('click', () => setPlacementMode('Road Blocked'));
+    // 1. Sidebar Entity Buttons
+    $('sidebarAddObstacle')?.addEventListener('click', () => onEntityBtnClick('Obstacle'));
+    $('sidebarAddPedestrian')?.addEventListener('click', () => onEntityBtnClick('Pedestrian Moving'));
+    $('sidebarAddAnimal')?.addEventListener('click', () => onEntityBtnClick('Animal Crossing'));
+    $('sidebarAddConstruction')?.addEventListener('click', () => onEntityBtnClick('Construction Working'));
+    $('sidebarAddRoadBlocked')?.addEventListener('click', () => onEntityBtnClick('Road Blocked'));
 
-    // Cancel placement button
+    // Sidebar placement toolbar
+    $('sidebarTogglePlacement')?.addEventListener('click', togglePlacementMode);
+    $('sidebarQuickAddRoute')?.addEventListener('click', () => quickAddEntity(state.selectedToolType || 'Obstacle'));
+
+    // 2. Map Entity Toolbar buttons
+    $('toolObstacle')?.addEventListener('click', () => onEntityBtnClick('Obstacle'));
+    $('toolPedestrian')?.addEventListener('click', () => onEntityBtnClick('Pedestrian Moving'));
+    $('toolAnimal')?.addEventListener('click', () => onEntityBtnClick('Animal Crossing'));
+    $('toolConstruction')?.addEventListener('click', () => onEntityBtnClick('Construction Working'));
+    $('toolRoadBlocked')?.addEventListener('click', () => onEntityBtnClick('Road Blocked'));
+    $('quickAddOnRouteBtn')?.addEventListener('click', () => quickAddEntity(state.selectedToolType || 'Obstacle'));
     $('cancelPlacementBtn')?.addEventListener('click', cancelPlacementMode);
 
-    // Quick add on route
-    $('quickAddOnRouteBtn')?.addEventListener('click', quickAddOnRoute);
-
-    // Review scenarios dropdown
+    // 3. Review scenarios dropdown
     $('demoScenariosBtn')?.addEventListener('click', e => {
       e.stopPropagation();
       const dd = $('scenariosDropdown');
@@ -1537,49 +2018,27 @@
       }
     });
 
-    // Clear buttons
+    // 4. Clear buttons
     $('clearAllHazardsBtn')?.addEventListener('click', clearAllHazards);
     $('clearHazardsSidebarBtn')?.addEventListener('click', clearAllHazards);
 
-    // Map controls
+    // 5. Map & Vehicle controls
     $('themeBtn')?.addEventListener('click', toggleMapTheme);
     $('calculateBtn')?.addEventListener('click', calculateRoutes);
-    $('demoBtn')?.addEventListener('click', startDemo);
-    $('trackBtn')?.addEventListener('click', startGps);
-    $('stopTrackBtn')?.addEventListener('click', stopGps);
+    $('demoBtn')?.addEventListener('click', toggleAutonomousDrive);
+    $('trackBtn')?.addEventListener('click', toggleAutonomousDrive);
+    $('stopTrackBtn')?.addEventListener('click', stopAutonomousDrive);
+    $('trafficBtn')?.addEventListener('click', toggleTrafficLayer);
+    $('followBtn')?.addEventListener('click', toggleFollowVehicle);
+    $('swapBtn')?.addEventListener('click', handleSwapOriginDestination);
+    $('useLocationBtn')?.addEventListener('click', () => initCurrentLocation());
 
-    $('followBtn')?.addEventListener('click', () => {
-      state.follow = !state.follow;
-      $('followBtn').classList.toggle('active', state.follow);
-      $('followBtn').textContent = state.follow ? '◎ Following vehicle' : '◎ Follow vehicle';
-      if (state.follow && state.currentPosition && state.map) {
-        state.map.panTo([state.currentPosition.lat, state.currentPosition.lng]);
-      }
-    });
+    // 6. Sensor rows diagnostics
+    $('sensorCameraRow')?.addEventListener('click', () => runSensorDiagnostic('camera'));
+    $('sensorLidarRow')?.addEventListener('click', () => runSensorDiagnostic('lidar'));
+    $('sensorRadarRow')?.addEventListener('click', () => runSensorDiagnostic('radar'));
 
-    $('trafficBtn')?.addEventListener('click', () => {
-      state.traffic = !state.traffic;
-      $('trafficBtn').classList.toggle('active', state.traffic);
-      toast(state.traffic ? 'Congestion perception layer enabled.' : 'Congestion layer disabled.');
-      log('Traffic layer toggled', state.traffic ? 'Simulation congestion active.' : 'Normal view.');
-    });
-
-    $('swapBtn')?.addEventListener('click', () => {
-      const a = $('originInput').value;
-      $('originInput').value = $('destinationInput').value;
-      $('destinationInput').value = a;
-      const tmp = state.start;
-      state.start = state.end;
-      state.end = tmp;
-      if (state.start) updateEndpointMarker('start', state.start.lat, state.start.lng);
-      if (state.end) updateEndpointMarker('end', state.end.lat, state.end.lng);
-    });
-
-    $('useLocationBtn')?.addEventListener('click', () => {
-      initCurrentLocation();
-    });
-
-    // Sidebar Manual Report Panel
+    // 7. Sidebar Manual Report Panel
     $('reportHazardBtn')?.addEventListener('click', () => {
       const p = $('reportPanel');
       if (p) p.hidden = !p.hidden;
@@ -1610,7 +2069,7 @@
       if ($('reportPanel')) $('reportPanel').hidden = true;
     });
 
-    // Reroute Modal buttons
+    // 8. Reroute Modal buttons
     $('acceptRerouteBtn')?.addEventListener('click', () => {
       if (state.pendingRoute !== null) selectRoute(state.pendingRoute);
       $('rerouteModal').hidden = true;

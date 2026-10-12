@@ -149,7 +149,11 @@ def calculate_routes(
                 route_hazards.append(h)
 
         has_hazard = len(route_hazards) > 0
-        has_blockage = any(h.get("type") in ["Road Blocked", "Road closure", "Barricade"] or h.get("severity") == "Critical" for h in route_hazards)
+        # Only Construction and Road Blockages force corridor rerouting per requirements
+        has_blockage = any(
+            h.get("type") in ["Road Blocked", "Road closure", "Barricade", "Construction Working", "Construction"]
+            for h in route_hazards
+        )
 
         # Heuristic traffic condition and toll tag for realistic Indian road context
         if idx == 0:
