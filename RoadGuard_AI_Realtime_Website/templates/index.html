@@ -332,10 +332,11 @@
             <p class="research-subtitle">Real pretrained YOLOv8 model inference with Indian road obstacle taxonomy, multi-object tracking, and motion prediction.</p>
           </div>
           <div class="header-action-group">
+            <span class="badge-pill badge-live" id="backendHealthBadge">BACKEND: CONNECTING...</span>
             <span class="badge-pill badge-live" id="modelStatusBadge">ENGINE: INITIALIZING...</span>
-            <label class="action-btn-pill upload-label" title="Upload on-road MP4/AVI for inference">
+            <label class="action-btn-pill upload-label" title="Upload on-road MP4/AVI/MOV/MKV/WEBM for inference">
               <span>📹 Upload On-Road Video</span>
-              <input type="file" id="videoUploadInput" accept="video/mp4,video/avi,video/mov,video/mkv" hidden>
+              <input type="file" id="videoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
             </label>
             <button type="button" class="action-btn-pill" id="testDetectionBtn">⚡ Test Frame Detection</button>
             <button type="button" class="action-btn-pill secondary" id="clearAnalysisBtn">⟲ Clear</button>
@@ -350,63 +351,63 @@
           <div class="camera-feed-card main-front">
             <div class="feed-header">
               <span class="feed-source-tag live">CAMERA 01 (FRONT) — PRIMARY SENSOR</span>
-              <span class="feed-badge live">ACTIVE AI INFERENCE</span>
+              <span class="feed-badge live" id="frontCamSourceBadge">SOURCE: UPLOADED VIDEO / PRIMARY SENSOR</span>
             </div>
             <div class="feed-viewport">
               <img id="frontCamImage" class="feed-stream-img" alt="Front Camera Feed" hidden>
               <div id="frontCamPlaceholder" class="feed-placeholder">
                 <div class="placeholder-icon">📷</div>
                 <div class="placeholder-text">Front Autonomous Camera Standby</div>
-                <small>Click "Test Frame Detection" or upload an MP4 video to run real YOLO inference.</small>
+                <small>Upload an on-road video (MP4/AVI/MOV) or click "Test Frame Detection" to run real YOLO inference.</small>
               </div>
             </div>
             <div class="feed-footer">
               <span>FOV: 120° Wide-Angle HD</span>
               <span>Input: 640x640 Tensor</span>
-              <span>Corridor: Ego Lane & Margin</span>
+              <span id="videoSourceTypeLabel">STATUS: STANDBY (NO VIDEO LOADED)</span>
             </div>
           </div>
 
-          <!-- Peripheral / Simulated Cameras -->
+          <!-- Peripheral / Optional Unconfigured Cameras -->
           <div class="peripheral-cameras-column">
             <div class="camera-feed-card peripheral">
               <div class="feed-header">
-                <span class="feed-source-tag simulated">CAMERA 02 (REAR)</span>
-                <span class="feed-badge simulated">SIMULATED CAMERA</span>
+                <span class="feed-source-tag not-configured">CAMERA 02 (REAR)</span>
+                <span class="feed-badge not-configured">NOT CONFIGURED</span>
               </div>
               <div class="feed-viewport small">
                 <div class="feed-placeholder">
                   <div class="placeholder-icon">🚘</div>
                   <div class="placeholder-text">Rear Corridor View</div>
-                  <small>Tracking approaching high-speed vehicles</small>
+                  <small>No physical rear camera attached to system</small>
                 </div>
               </div>
             </div>
 
             <div class="camera-feed-card peripheral">
               <div class="feed-header">
-                <span class="feed-source-tag simulated">CAMERA 03 (LEFT BLIND-SPOT)</span>
-                <span class="feed-badge simulated">SIMULATED CAMERA</span>
+                <span class="feed-source-tag not-configured">CAMERA 03 (LEFT BLIND-SPOT)</span>
+                <span class="feed-badge not-configured">NOT CONFIGURED</span>
               </div>
               <div class="feed-viewport small">
                 <div class="feed-placeholder">
                   <div class="placeholder-icon">🛵</div>
                   <div class="placeholder-text">Left Flank View</div>
-                  <small>Informal two-wheeler filtering & merging</small>
+                  <small>No physical left camera attached to system</small>
                 </div>
               </div>
             </div>
 
             <div class="camera-feed-card peripheral">
               <div class="feed-header">
-                <span class="feed-source-tag simulated">CAMERA 04 (RIGHT CURB / SHOULDER)</span>
-                <span class="feed-badge simulated">SIMULATED CAMERA</span>
+                <span class="feed-source-tag not-configured">CAMERA 04 (RIGHT SHOULDER)</span>
+                <span class="feed-badge not-configured">NOT CONFIGURED</span>
               </div>
               <div class="feed-viewport small">
                 <div class="feed-placeholder">
                   <div class="placeholder-icon">🐕</div>
                   <div class="placeholder-text">Right Shoulder View</div>
-                  <small>Pedestrians, cattle & unpaved shoulder</small>
+                  <small>No physical right camera attached to system</small>
                 </div>
               </div>
             </div>
@@ -633,6 +634,28 @@
               <text x="835" y="115" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">m=1500kg, L=2.7m</text>
               <text x="835" y="135" fill="#00e59b" font-size="10" font-family="Manrope" text-anchor="middle">State: [x, y, ψ, vx, r, β]</text>
             </svg>
+          </div>
+        </div>
+
+        <!-- Realistic MathWorks Automated Driving Toolbox 3D Trajectory Visualization -->
+        <div class="research-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">MATHWORKS AUTOMATED DRIVING TOOLBOX VISUALIZATION</span>
+              <h3>Realistic 3D Candidate Trajectory Fan & Obstacle Avoidance Simulation</h3>
+            </div>
+            <div class="header-tag-group">
+              <span class="badge-pill badge-live" id="simCaseTag">SCENARIO: CASE 1 (HIGHWAY EVASION)</span>
+              <button type="button" class="action-btn-pill secondary" id="cycleSimCaseBtn" style="padding:4px 10px;font-size:11px;">Next Scenario Case (1-5)</button>
+            </div>
+          </div>
+          <div style="background:#050d08;border-radius:8px;padding:12px;border:1px solid #1a3324;text-align:center;">
+            <canvas id="trajectorySimCanvas" width="940" height="380" style="display:block;width:100%;max-width:940px;margin:0 auto;border-radius:6px;background:#09120e;"></canvas>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:11px;color:#8fa598;padding:0 8px;">
+              <span><b>Perspective:</b> 3D Curved Road Surface (Frenet Spline Lattice)</span>
+              <span><b>Path Fan:</b> <span style="color:#00e59b;font-weight:700;">Optimal (Green)</span> | <span style="color:#ff4d4d;font-weight:700;">Collision (Red)</span> | Candidates (Gray)</span>
+              <span><b>Sensor Fusion:</b> ● Radar (Red) | ▲ Vision (Blue) | □ Tracks</span>
+            </div>
           </div>
         </div>
 

@@ -23,15 +23,14 @@ from services.simulink_service import simulink_service
 from services.pathweaver_adapter import pathweaver_adapter
 from services.carla_service import carla_service
 from services.dataset_service import dataset_service
+from services.video_analysis_service import (
+    video_analysis_service,
+    UPLOAD_VIDEOS_DIR,
+    SNAPSHOTS_DIR,
+    MAX_VIDEO_SIZE_BYTES
+)
 
 autonomous_bp = Blueprint("autonomous_bp", __name__)
-
-VIDEO_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "videos")
-VIDEO_SNAPSHOTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "snapshots")
-os.makedirs(VIDEO_UPLOAD_DIR, exist_ok=True)
-os.makedirs(VIDEO_SNAPSHOTS_DIR, exist_ok=True)
-
-video_jobs: Dict[str, Dict[str, Any]] = {}
 
 # -----------------------------------------------------------------------------
 # 1. HEALTH, READINESS & FEATURE MATRIX
@@ -40,16 +39,23 @@ video_jobs: Dict[str, Dict[str, Any]] = {}
 @autonomous_bp.get("/api/health")
 def api_health():
     """Health check endpoint for autonomous research system."""
+    p_status = perception_service.get_status()
     return jsonify(
         status="healthy",
+        backend="Flask",
         service="RoadGuard Autonomous Driving Research Prototype",
         version="2.0-research",
         timestamp=time.time(),
+        perception=p_status,
+        video_pipeline={
+            "max_file_size_mb": round(MAX_VIDEO_SIZE_BYTES / (1024 * 1024)),
+            "allowed_formats": ["mp4", "avi", "mov", "mkv", "webm"]
+        },
         environment={
             "python_version": "3.14.7",
             "opencv_version": cv2.__version__,
             "torch_version": "2.14.1",
-            "ultralytics_active": perception_service.model is not None
+            "ultralytics_active": p_status.get("configured", False)
         }
     )
 
@@ -199,80 +205,68 @@ def api_detect_frame():
 @autonomous_bp.post("/api/autonomous/upload-video")
 def api_upload_video():
     """
-    Accepts video upload, validates size (< 100MB), and starts asynchronous processing.
+    Accepts video upload, validates size (< 50MB) and format,
+    verifies with OpenCV, and starts asynchronous YOLO processing.
     """
     if "video" not in request.files:
         return jsonify(ok=False, error="No video file supplied in form data."), 400
 
     file = request.files["video"]
-    if file.filename == "":
-        return jsonify(ok=False, error="Empty filename."), 400
+    filename = file.filename or ""
 
-    job_id = f"job_{uuid.uuid4().hex[:8]}"
-    ext = os.path.splitext(file.filename)[1].lower() or ".mp4"
-    saved_filename = f"{job_id}{ext}"
-    video_path = os.path.join(VIDEO_UPLOAD_DIR, saved_filename)
+    # 1. Format validation
+    is_valid, err_msg, status_code = video_analysis_service.validate_upload(filename)
+    if not is_valid:
+        return jsonify(ok=False, error=err_msg), status_code
+
+    # 2. Check file size using stream length or temporary save
+    temp_id = f"upload_{uuid.uuid4().hex[:8]}"
+    ext = os.path.splitext(filename)[1].lower() or ".mp4"
+    video_path = os.path.join(UPLOAD_VIDEOS_DIR, f"{temp_id}{ext}")
     file.save(video_path)
 
-    job_snapshot_dir = os.path.join(VIDEO_SNAPSHOTS_DIR, job_id)
-    os.makedirs(job_snapshot_dir, exist_ok=True)
+    file_size = os.path.getsize(video_path)
+    if file_size > MAX_VIDEO_SIZE_BYTES:
+        os.remove(video_path)
+        limit_mb = round(MAX_VIDEO_SIZE_BYTES / (1024 * 1024))
+        return jsonify(ok=False, error=f"File size exceeds maximum allowed limit of {limit_mb} MB."), 413
 
-    job_info = {
-        "job_id": job_id,
-        "filename": file.filename,
-        "video_path": video_path,
-        "snapshot_dir": job_snapshot_dir,
-        "status": "PROCESSING",
-        "progress_pct": 5,
-        "result": None,
-        "error": None
-    }
-    video_jobs[job_id] = job_info
+    if file_size == 0:
+        os.remove(video_path)
+        return jsonify(ok=False, error="Uploaded video file is empty (0 bytes)."), 400
 
-    # Asynchronous worker
-    def _process_worker():
-        try:
-            tracker = tracking_service
-            risk_eng = collision_risk_service
-            planner = planner_service
-            res = perception_service.process_video(
-                video_path=video_path,
-                output_dir=job_snapshot_dir,
-                tracker=tracker,
-                risk_engine=risk_eng,
-                planner=planner,
-                max_frames=75,
-                sample_interval=2
-            )
-            job_info["status"] = "COMPLETED"
-            job_info["progress_pct"] = 100
-            job_info["result"] = res
-        except Exception as e:
-            job_info["status"] = "FAILED"
-            job_info["error"] = str(e)
+    # 3. Verify decodability with OpenCV
+    is_readable, read_err, meta = video_analysis_service.validate_video_file_readable(video_path)
+    if not is_readable:
+        os.remove(video_path)
+        return jsonify(ok=False, error=read_err), 400
 
-    th = threading.Thread(target=_process_worker, daemon=True)
-    th.start()
+    # 4. Launch asynchronous analysis job
+    job_id = video_analysis_service.create_job(filename, video_path, meta)
 
     return jsonify(
         ok=True,
         job_id=job_id,
-        message=f"Video '{file.filename}' uploaded successfully. Processing started.",
+        filename=filename,
+        metadata=meta,
+        message=f"Video '{filename}' uploaded and validated successfully. Analysis in progress.",
         status_url=f"/api/autonomous/video-status/{job_id}"
     )
 
 
 @autonomous_bp.get("/api/autonomous/video-status/<job_id>")
 def api_video_status(job_id: str):
-    job = video_jobs.get(job_id)
+    job = video_analysis_service.get_job(job_id)
     if not job:
-        return jsonify(ok=False, error=f"Job {job_id} not found."), 404
+        return jsonify(ok=False, error=f"Job '{job_id}' not found."), 404
     return jsonify(ok=True, job=job)
 
 
 @autonomous_bp.get("/api/autonomous/video-snapshot/<job_id>/<filename>")
 def api_video_snapshot(job_id: str, filename: str):
-    snap_dir = os.path.join(VIDEO_SNAPSHOTS_DIR, job_id)
+    snap_dir = os.path.join(SNAPSHOTS_DIR, job_id)
+    if not os.path.exists(os.path.join(snap_dir, filename)):
+        return jsonify(ok=False, error="Snapshot not found."), 404
     return send_from_directory(snap_dir, filename)
 
 

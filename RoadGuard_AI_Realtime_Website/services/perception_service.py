@@ -58,56 +58,73 @@ class IndianRoadPerceptionEngine:
         self.model = None
         self.model_type = "UNINITIALIZED"
         self.model_status_text = "Not loaded"
+        self.model_configured = False
         self.confidence_threshold = 0.35
         self.init_engine()
 
     def init_engine(self):
-        """Initializes YOLO if weights are available, otherwise activates OpenCV CV baseline."""
+        """Initializes YOLO if weights are available. If unavailable, flags as NOT_CONFIGURED with setup guidance."""
         try:
             from ultralytics import YOLO
-            # Look for local custom weights first
             custom_weights = os.path.join(self.models_dir, "indian_roads_yolo.pt")
             default_weights = os.path.join(self.models_dir, "yolov8n.pt")
+            root_weights = os.path.join(os.path.dirname(os.path.dirname(__file__)), "yolov8n.pt")
 
             if os.path.exists(custom_weights):
                 self.model = YOLO(custom_weights)
                 self.model_type = "YOLO_INDIAN_ROADS_CUSTOM"
                 self.model_status_text = "Custom Indian Roads YOLO Model Loaded"
+                self.model_configured = True
             elif os.path.exists(default_weights):
                 self.model = YOLO(default_weights)
                 self.model_type = "YOLO_PRETRAINED_COCO"
-                self.model_status_text = "Pretrained YOLOv8n COCO Model Loaded"
+                self.model_status_text = "Pretrained YOLOv8n Model Loaded"
+                self.model_configured = True
+            elif os.path.exists(root_weights):
+                self.model = YOLO(root_weights)
+                self.model_type = "YOLO_PRETRAINED_COCO"
+                self.model_status_text = "Pretrained YOLOv8n Model Active"
+                self.model_configured = True
             else:
-                # Attempt to download or initialize yolov8n
                 try:
                     self.model = YOLO("yolov8n.pt")
                     self.model_type = "YOLO_PRETRAINED_COCO"
-                    self.model_status_text = "Pretrained YOLOv8n COCO Model Active"
+                    self.model_status_text = "Pretrained YOLOv8n Model Active (auto-downloaded)"
+                    self.model_configured = True
                 except Exception as dl_err:
                     self.model = None
-                    self.model_type = "OPENCV_CV_BASELINE"
-                    self.model_status_text = f"YOLO weights unavailable ({dl_err}). Using OpenCV CV Baseline."
+                    self.model_type = "NOT_CONFIGURED"
+                    self.model_status_text = f"YOLO weights unavailable: {dl_err}"
+                    self.model_configured = False
         except ImportError:
             self.model = None
-            self.model_type = "OPENCV_CV_BASELINE"
-            self.model_status_text = "Ultralytics not installed. OpenCV CV Baseline active."
+            self.model_type = "NOT_CONFIGURED"
+            self.model_status_text = "Ultralytics package is not installed."
+            self.model_configured = False
         except Exception as e:
             self.model = None
-            self.model_type = "OPENCV_CV_BASELINE"
-            self.model_status_text = f"Fallback to OpenCV Baseline: {e}"
+            self.model_type = "NOT_CONFIGURED"
+            self.model_status_text = f"Failed to initialize perception model: {e}"
+            self.model_configured = False
 
     def get_status(self) -> Dict[str, Any]:
         return {
+            "configured": self.model_configured,
             "model_type": self.model_type,
             "status_text": self.model_status_text,
             "classes_supported": list(self.TAXONOMY_INFO.keys()),
-            "custom_classes_note": "Potholes and Construction barriers require custom training weights or simulation metadata.",
-            "confidence_threshold": self.confidence_threshold
+            "custom_classes_note": "Potholes and Construction barriers require custom training weights or fine-tuned checkpoints.",
+            "confidence_threshold": self.confidence_threshold,
+            "setup_instructions": (
+                "To configure YOLO inference: 1. Ensure 'pip install ultralytics torch' is installed. "
+                "2. Place 'yolov8n.pt' or 'indian_roads_yolo.pt' in the project directory or models/ folder. "
+                "3. Restart the server."
+            ) if not self.model_configured else "Perception engine is fully loaded and operational."
         }
 
     def detect_image(self, frame: np.ndarray) -> Tuple[List[Dict[str, Any]], float]:
         """
-        Runs object detection on a BGR image frame.
+        Runs real object detection on a BGR image frame.
         Returns: (list_of_detections, inference_time_ms)
         Each detection: {'bbox': [x1, y1, x2, y2], 'class_name': str, 'confidence': float, 'raw_label': str}
         """
@@ -117,56 +134,32 @@ class IndianRoadPerceptionEngine:
         if frame is None or frame.size == 0:
             return [], 0.0
 
-        h, w = frame.shape[:2]
+        if not self.model_configured or self.model is None:
+            # Model is not configured: do not simulate fake detections
+            inf_ms = (time.perf_counter() - start_time) * 1000.0
+            return [], round(inf_ms, 2)
 
-        if self.model is not None and "YOLO" in self.model_type:
-            try:
-                results = self.model(frame, conf=self.confidence_threshold, verbose=False)
-                for r in results:
-                    boxes = r.boxes
-                    for box in boxes:
-                        cls_id = int(box.cls[0])
-                        raw_name = r.names.get(cls_id, str(cls_id))
-                        conf = float(box.conf[0])
-                        coords = box.xyxy[0].tolist()
+        try:
+            results = self.model(frame, conf=self.confidence_threshold, verbose=False)
+            for r in results:
+                boxes = r.boxes
+                for box in boxes:
+                    cls_id = int(box.cls[0])
+                    raw_name = r.names.get(cls_id, str(cls_id))
+                    conf = float(box.conf[0])
+                    coords = box.xyxy[0].tolist()
 
-                        mapped_class = self.CLASS_MAPPINGS.get(raw_name.lower(), None)
-                        if mapped_class:
-                            detections.append({
-                                "bbox": [float(coords[0]), float(coords[1]), float(coords[2]), float(coords[3])],
-                                "class_name": mapped_class,
-                                "raw_label": raw_name,
-                                "confidence": round(conf, 3)
-                            })
-            except Exception as yolo_err:
-                print(f"[Perception Error] YOLO inference failed: {yolo_err}")
-
-        # If no YOLO detections or running baseline, use OpenCV motion/contour/color detector
-        if not detections and self.model_type == "OPENCV_CV_BASELINE":
-            # Computer Vision road saliency detector
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            blur = cv2.GaussianBlur(gray, (5, 5), 0)
-            edges = cv2.Canny(blur, 50, 150)
-
-            # Restrict detection to road ROI (lower half)
-            roi = edges[int(h * 0.4):, :]
-            contours, _ = cv2.findContours(roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
-                if area > 1200:
-                    bx, by, bw, bh = cv2.boundingRect(cnt)
-                    by += int(h * 0.4)
-                    aspect = float(bw) / max(1.0, float(bh))
-                    cls_guess = "Vehicle" if aspect > 1.2 else ("Pedestrian" if aspect < 0.6 else "Motorcycle/bicycle")
-                    detections.append({
-                        "bbox": [float(bx), float(by), float(bx + bw), float(by + bh)],
-                        "class_name": cls_guess,
-                        "raw_label": f"cv_{cls_guess.lower()}",
-                        "confidence": 0.72
-                    })
-            # Cap maximum contours
-            detections = sorted(detections, key=lambda d: (d["bbox"][2] - d["bbox"][0]) * (d["bbox"][3] - d["bbox"][1]), reverse=True)[:8]
+                    mapped_class = self.CLASS_MAPPINGS.get(raw_name.lower(), None)
+                    if mapped_class:
+                        detections.append({
+                            "bbox": [round(float(coords[0]), 1), round(float(coords[1]), 1),
+                                     round(float(coords[2]), 1), round(float(coords[3]), 1)],
+                            "class_name": mapped_class,
+                            "raw_label": raw_name,
+                            "confidence": round(conf, 3)
+                        })
+        except Exception as yolo_err:
+            print(f"[Perception Error] Real YOLO inference failed: {yolo_err}")
 
         inference_ms = (time.perf_counter() - start_time) * 1000.0
         return detections, round(inference_ms, 2)

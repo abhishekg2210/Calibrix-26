@@ -110,6 +110,14 @@
   border: 1px solid #5c1e24;
 }
 
+.badge-not-configured,
+.feed-badge.not-configured,
+.feed-source-tag.not-configured {
+  background: #2a1012;
+  color: #ff6e75;
+  border: 1px solid #5c1e22;
+}
+
 /* Perception Multi-Camera Grid */
 .camera-grid-layout {
   display: grid;
