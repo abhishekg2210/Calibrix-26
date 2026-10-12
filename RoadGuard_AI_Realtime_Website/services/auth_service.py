@@ -46,8 +46,8 @@ def authenticate_user(identifier: str, password: str):
     cursor.execute('''
         SELECT id, username, email, password_hash, full_name, role
         FROM users
-        WHERE email = ? OR username = ?
-    ''', (identifier_clean, identifier_clean))
+        WHERE email = ? OR username = ? OR (username = 'admin' AND (? IN ('admin@roadguard.ai', 'admin@irie.ai', 'admin')))
+    ''', (identifier_clean, identifier_clean, identifier_clean))
     user = cursor.fetchone()
     conn.close()
 

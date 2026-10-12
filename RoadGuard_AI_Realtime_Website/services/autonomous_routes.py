@@ -758,7 +758,7 @@ def api_sim_run_scenario(scenario_id: str):
     return jsonify(res)
 
 
-@autonomous_bp.get("/api/autonomous/simulation/run-all-scenarios")
+@autonomous_bp.route("/api/autonomous/simulation/run-all-scenarios", methods=["GET", "POST"])
 def api_sim_run_all_scenarios():
     """Runs all 20 canonical scenarios and outputs an automated verification score matrix."""
     results = []
