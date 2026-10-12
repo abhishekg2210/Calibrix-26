@@ -75,6 +75,12 @@
     reportedStoppedAlert: false,
     reportedResumedAlert: false,
 
+    recordHeartbeat(source = 'SIMULATED') {
+      this.lastSensorHeartbeat = Date.now();
+      this.isSensorUnavailable = false;
+      this.sensorSource = source;
+    },
+
     updateHeartbeat(source = 'SIMULATED') {
       this.lastSensorHeartbeat = Date.now();
       this.isSensorUnavailable = false;
@@ -93,6 +99,7 @@
         toast('⚠️ SENSOR UNAVAILABLE — PATH CLEARANCE UNCONFIRMED');
         log('Sensor Feed Timeout', 'Perception sensor offline. Retaining safe stopped state (0 km/h) in simulation.', 'red');
       } else {
+        this.lastSensorHeartbeat = Date.now();
         this.updateHeartbeat('SIMULATED');
         toast('✅ SENSOR FEED RESTORED');
         log('Sensor Restored', 'Perception sensor stream nominal.', 'green');
@@ -101,7 +108,10 @@
 
     isStale() {
       if (this.isSensorUnavailable) return true;
-      return (Date.now() - this.lastSensorHeartbeat > this.SENSOR_TIMEOUT_MS);
+      if (this.sensorSource === 'REAL_VISION') {
+        return (Date.now() - this.lastSensorHeartbeat > this.SENSOR_TIMEOUT_MS);
+      }
+      return false; // Nominal simulated perception stream remains healthy
     }
   };
 
@@ -198,15 +208,61 @@
             toast('ALTERNATIVE ROUTE UPDATED');
             log('ALTERNATIVE ROUTE UPDATED', `Vehicle automatically rerouted to ${openRoute.name || `Corridor ${openRouteIdx + 1}`}.`, 'green');
           } else {
-            // ALL corridors blocked!
+            // All existing corridors touch blockage -> dynamically construct nearby shortcut bypass road!
+            const bypassSuccess = applyDynamicObstacleAvoidance();
+            if (bypassSuccess) {
+              this.allCorridorsBlocked = false;
+              const currentRoute = state.routes[state.selected];
+              currentRoute.is_blocked = false;
+
+              if (banner) {
+                banner.hidden = false;
+                banner.className = 'dynamic-reroute-banner bypass-mode';
+                $('rerouteBannerTitle').textContent = 'ALTERNATIVE ROUTE UPDATED';
+                $('rerouteBannerSubtitle').textContent = `Blockage detected ahead. Automatically rerouted onto nearby shortcut road bypassing obstructed zone.`;
+                $('rerouteBannerBadge').textContent = 'SHORTCUT DETOUR ACTIVE';
+                if ($('retryRouteBtn')) $('retryRouteBtn').hidden = true;
+              }
+
+              // Update simulation coordinates to follow shortcut road
+              if (state.demoTimer && currentRoute.coords) {
+                state.activeDemoCoords = currentRoute.coords;
+                if (state.currentPosition) {
+                  let closestIdx = 0, minD = Infinity;
+                  for (let k = 0; k < state.activeDemoCoords.length; k++) {
+                    const d = haversine(state.activeDemoCoords[k], state.currentPosition);
+                    if (d < minD) { minD = d; closestIdx = k; }
+                  }
+                  state.demoIndex = closestIdx;
+                }
+              }
+
+              toast('ALTERNATIVE ROUTE UPDATED — SHORTCUT BYPASS ACTIVE');
+              log('ALTERNATIVE ROUTE UPDATED', 'Rerouted onto nearby shortcut bypass road around construction/blockage.', 'green');
+            } else {
+              this.handleAllCorridorsBlocked();
+            }
+          }
+        } else {
+          const bypassSuccess = applyDynamicObstacleAvoidance();
+          if (bypassSuccess) {
+            this.allCorridorsBlocked = false;
+            toast('ALTERNATIVE ROUTE UPDATED — SHORTCUT BYPASS ACTIVE');
+            log('ALTERNATIVE ROUTE UPDATED', 'Rerouted onto shortcut detour road.', 'green');
+          } else {
             this.handleAllCorridorsBlocked();
           }
+        }
+      } catch (err) {
+        log('Reroute Notice', err.message, 'amber');
+        const bypassSuccess = applyDynamicObstacleAvoidance();
+        if (bypassSuccess) {
+          this.allCorridorsBlocked = false;
+          toast('ALTERNATIVE ROUTE UPDATED — SHORTCUT BYPASS ACTIVE');
+          log('ALTERNATIVE ROUTE UPDATED', 'Rerouted onto shortcut road avoiding blockage.', 'green');
         } else {
           this.handleAllCorridorsBlocked();
         }
-      } catch (err) {
-        log('Reroute Error', err.message, 'red');
-        this.handleAllCorridorsBlocked();
       } finally {
         this.isRerouting = false;
       }
@@ -660,17 +716,32 @@
     }
   }
 
-  function updateVehicleMarker(lat, lng) {
+  function updateVehicleMarker(lat, lng, heading) {
     if (!state.map) return;
+    const rot = Math.round(heading !== undefined && heading !== null ? heading : (state.lastHeading || 0));
+    const arrowHtml = `
+      <div class="rg-vehicle-beacon" style="transform: rotate(${rot}deg);">
+        <div class="rg-vehicle-pulse"></div>
+        <div class="rg-vehicle-arrow-body">
+          <svg viewBox="0 0 36 36" width="36" height="36" class="rg-vehicle-arrow-svg">
+            <path d="M18 3 L32 31 L18 24 L4 31 Z" fill="#00e59b" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+            <circle cx="18" cy="18" r="4" fill="#ffffff"/>
+          </svg>
+        </div>
+      </div>
+    `;
+    const icon = L.divIcon({
+      className: 'rg-marker-vehicle-wrap',
+      html: arrowHtml,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
+    });
+
     if (!state.vehicleMarker) {
-      const icon = L.divIcon({
-        className: 'rg-marker-vehicle-wrap',
-        html: `<div class="rg-vehicle-beacon">▲</div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
-      });
-      state.vehicleMarker = L.marker([lat, lng], { icon }).addTo(state.map).bindPopup('<b>Vehicle Position</b><br>Autonomous Drive Tracking');
+      state.vehicleMarker = L.marker([lat, lng], { icon, zIndexOffset: 2500 }).addTo(state.map);
+      state.vehicleMarker.bindPopup('<b>Autonomous Vehicle</b><br>Live Kinematic Position Tracking');
     } else {
+      state.vehicleMarker.setIcon(icon);
       state.vehicleMarker.setLatLng([lat, lng]);
     }
   }
@@ -1509,7 +1580,7 @@
         }
       }
 
-      const thresholdKm = (h.type === 'Construction Working') ? 0.08 : ((h.type === 'Road Blocked') ? 0.07 : 0.05);
+      const thresholdKm = (h.type === 'Construction Working') ? 0.35 : ((h.type === 'Road Blocked') ? 0.35 : 0.18);
 
       if (bestSegmentIdx >= 0 && minDistanceKm <= thresholdKm && bestProj) {
         const pA = detouredCoords[bestSegmentIdx];
@@ -1532,40 +1603,43 @@
           const hy = h.lat - bestProj.lat;
           const dot = nx * hx + ny * hy;
 
-          // Steer in opposite direction of hazard into adjacent open lane/shoulder
+          // Steer in opposite direction of hazard into adjacent shortcut corridor/bypass
           const steerSign = dot >= 0 ? -1 : 1;
 
-          // Realistic lateral lane bypass in degrees (~6m to 9m on roadway)
-          let lateralOffsetDeg = 0.000065; // ~7.2 meters
+          let lateralOffsetDeg = 0.00028; // ~31 meters shortcut road
           if (h.type === 'Construction Working') {
-            lateralOffsetDeg = 0.000080; // ~8.9 meters
-            maxClearanceMeters = 8.9;
+            lateralOffsetDeg = 0.00036; // ~40 meters shortcut bypass road
+            maxClearanceMeters = 40.0;
           } else if (h.type === 'Road Blocked') {
-            lateralOffsetDeg = 0.000090; // ~10.0 meters
-            maxClearanceMeters = 10.0;
+            lateralOffsetDeg = 0.00045; // ~50 meters shortcut bypass road
+            maxClearanceMeters = 50.0;
           } else {
-            lateralOffsetDeg = 0.000055; // ~6.1 meters
-            maxClearanceMeters = 6.1;
+            lateralOffsetDeg = 0.00015; // ~16 meters
+            maxClearanceMeters = 16.0;
           }
 
-          // Capture the exact obstructed 25m span for red warning visualization
-          const spanDeg = 0.00028; // ~30m along roadway
+          // Capture the exact obstructed span for red warning visualization
+          const spanDeg = 0.00040; // ~45m along roadway
           const pEntry = { lat: bestProj.lat - ty * spanDeg, lng: bestProj.lng - tx * spanDeg };
           const pExit = { lat: bestProj.lat + ty * spanDeg, lng: bestProj.lng + tx * spanDeg };
           blockedSegments.push([pEntry, bestProj, pExit]);
 
-          // Smoothly deflect vertices within influence zone using a Gaussian bell curve
-          const influenceRadiusKm = 0.035; // 35 meters along road
-          for (let k = 0; k < detouredCoords.length; k++) {
-            const ptDistKm = haversine(detouredCoords[k], bestProj);
-            if (ptDistKm < influenceRadiusKm) {
-              const u = ptDistKm / influenceRadiusKm;
-              // Smooth bell curve envelope: 1 at center, tapering smoothly to 0 at edges
-              const bellFactor = Math.cos(u * Math.PI * 0.5) ** 2;
-              detouredCoords[k].lat += ny * lateralOffsetDeg * bellFactor * steerSign;
-              detouredCoords[k].lng += nx * lateralOffsetDeg * bellFactor * steerSign;
-            }
+          // Subdivide and insert smooth shortcut bypass road coordinates
+          const shortcutArc = [];
+          const arcSteps = 7;
+          for (let step = 1; step <= arcSteps; step++) {
+            const tFrac = step / (arcSteps + 1);
+            const linearLat = pEntry.lat + (pExit.lat - pEntry.lat) * tFrac;
+            const linearLng = pEntry.lng + (pExit.lng - pEntry.lng) * tFrac;
+            const arcBulge = Math.sin(tFrac * Math.PI);
+            shortcutArc.push({
+              lat: linearLat + ny * lateralOffsetDeg * arcBulge * steerSign,
+              lng: linearLng + nx * lateralOffsetDeg * arcBulge * steerSign
+            });
           }
+
+          // Splice shortcutArc into detouredCoords
+          detouredCoords.splice(bestSegmentIdx + 1, 0, ...shortcutArc);
         }
       }
     });
@@ -1873,7 +1947,7 @@
         $('updateVal').textContent = 'ALL BLOCKED';
         $('updateVal').style.color = 'var(--red)';
         $('vehicleStatus').textContent = 'All route corridors blocked. Vehicle simulation halted safely.';
-        updateVehicleMarker(p.lat, p.lng);
+        updateVehicleMarker(p.lat, p.lng, heading);
         return;
       }
 
@@ -1888,7 +1962,7 @@
         $('updateVal').textContent = 'SENSOR TIMEOUT';
         $('updateVal').style.color = 'var(--red)';
         $('vehicleStatus').textContent = 'Sensor feed stale/unavailable: Retaining safe stop (0 km/h). Road clearance unverified.';
-        updateVehicleMarker(p.lat, p.lng);
+        updateVehicleMarker(p.lat, p.lng, heading);
         return;
       }
 
@@ -1930,7 +2004,7 @@
             log('PEDESTRIAN DETECTED — VEHICLE STOPPED', `Pedestrian detected in crossing zone. Decelerated to 0 km/h stop before crossing. [${PedestrianSafety.sensorSource}]`, 'red');
           }
 
-          updateVehicleMarker(p.lat, p.lng);
+          updateVehicleMarker(p.lat, p.lng, heading);
           return; // DO NOT ADVANCE VEHICLE POSITION WHILE CROSSING ZONE IS OCCUPIED!
         } else if (state.isYieldingWait) {
           // Pedestrian has cleared roadway! Enforce 2.5s hysteresis / debounce safety interval
@@ -1952,7 +2026,7 @@
             $('updateVal').textContent = 'SAFETY CONFIRMATION';
             $('updateVal').style.color = 'var(--amber)';
             $('vehicleStatus').textContent = `Crossing zone clear: Confirming safety interval (${remainingSec}s remaining) before resume.`;
-            updateVehicleMarker(p.lat, p.lng);
+            updateVehicleMarker(p.lat, p.lng, heading);
             return;
           } else {
             // Confirmed clear for full safety interval! Safe to resume!
@@ -2011,7 +2085,7 @@
       $('telemetryType').textContent = 'SOFTWARE ACTIVE';
 
       // Update vehicle marker on Leaflet map
-      updateVehicleMarker(p.lat, p.lng);
+      updateVehicleMarker(p.lat, p.lng, heading);
 
       if (state.follow && state.map) {
         state.map.panTo([p.lat, p.lng]);

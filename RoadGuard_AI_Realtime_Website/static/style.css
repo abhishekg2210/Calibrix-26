@@ -1,6 +1,41 @@
 /* Base Layout & Reset - Unlocked Natural Vertical Scrolling */
 * {
   box-sizing: border-box;
+  scrollbar-width: thin !important;
+  scrollbar-color: #1a2a22 transparent !important;
+}
+
+/* Universal sleek dark tactical scrollbars - completely eliminate white OS scroll buttons & tracks */
+::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1a2a22 !important;
+  border-radius: 999px !important;
+  border: 1px solid #14221a !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #274033 !important;
+}
+
+/* Explicitly remove Windows OS scroll buttons (the white buttons with black arrows) */
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent !important;
 }
 
 :root {
@@ -2083,5 +2118,123 @@ body {
   color: #fff !important;
   box-shadow: 0 0 16px rgba(255, 94, 102, 0.4) !important;
 }
+
+/* ==========================================================================
+   LEAFLET VEHICLE ARROW MARKER & PULSE BEACON
+   ========================================================================== */
+.rg-marker-vehicle-wrap {
+  background: transparent !important;
+  border: none !important;
+  pointer-events: auto !important;
+  z-index: 2500 !important;
+}
+
+.rg-vehicle-beacon {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+  will-change: transform;
+}
+
+.rg-vehicle-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  margin-left: -20px;
+  border-radius: 50%;
+  background: rgba(0, 229, 155, 0.32);
+  box-shadow: 0 0 20px rgba(0, 229, 155, 0.8);
+  animation: rgVehiclePulse 1.4s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes rgVehiclePulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.rg-vehicle-arrow-body {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 0 10px rgba(0, 229, 155, 0.95));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rg-vehicle-arrow-svg {
+  display: block;
+}
+
+/* Map Entity Markers & Pins */
+.rg-div-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.rg-marker-wrap {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rg-marker-pin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  border: 2px solid #fff;
+  z-index: 2;
+  background: #111a14;
+}
+
+.rg-pulse-ring {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  animation: rgPulse 1.6s ease-out infinite;
+  z-index: 1;
+}
+
+@keyframes rgPulse {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.rg-marker-pedestrian .rg-marker-pin { background: #0c283f; border-color: #38bdf8; color: #38bdf8; }
+.rg-marker-pedestrian .rg-pulse-ring { background: rgba(56, 189, 248, 0.4); }
+
+.rg-marker-animal .rg-marker-pin { background: #26173d; border-color: #c084fc; color: #c084fc; }
+.rg-marker-animal .rg-pulse-ring { background: rgba(192, 132, 252, 0.4); }
+
+.rg-marker-construction .rg-marker-pin { background: #351b0a; border-color: #fb923c; color: #fb923c; }
+.rg-marker-construction .rg-pulse-ring { background: rgba(251, 146, 60, 0.4); }
+
+.rg-marker-blocked .rg-marker-pin { background: #3b1016; border-color: #f87171; color: #f87171; }
+.rg-marker-blocked .rg-pulse-ring { background: rgba(248, 113, 113, 0.4); }
+
+.rg-marker-obstacle .rg-marker-pin { background: #2d240d; border-color: #facc15; color: #facc15; }
+.rg-marker-obstacle .rg-pulse-ring { background: rgba(250, 204, 21, 0.4); }
+
 
 
