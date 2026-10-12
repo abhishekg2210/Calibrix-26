@@ -473,7 +473,7 @@ def api_hazards_post():
         return jsonify(ok=False, error="Valid latitude and longitude are required."), 400
 
     allowed = {
-        "Obstacle", "Pedestrian Moving", "Construction Working", "Road Blocked",
+        "Obstacle", "Pedestrian Moving", "Animal Crossing", "Construction Working", "Road Blocked",
         "Pothole", "Road crack", "Waterlogging", "Construction", "Barricade",
         "Road closure", "Accident", "Pedestrian", "Animal crossing", "Moving vehicle", "Other"
     }

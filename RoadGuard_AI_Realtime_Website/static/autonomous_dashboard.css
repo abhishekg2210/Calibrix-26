@@ -573,10 +573,12 @@
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .camera-grid-layout,
+  .camera-rig-grid,
   .simulink-grid {
     grid-template-columns: 1fr;
   }
-  .side-cameras-column {
+  .side-cameras-column,
+  .peripheral-cameras-column {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
   }
@@ -586,10 +588,154 @@
   .research-container {
     padding: 14px;
   }
-  .side-cameras-column {
+  .side-cameras-column,
+  .peripheral-cameras-column {
     grid-template-columns: 1fr;
   }
   .simulink-metrics-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ==========================================================================
+   CAMERA RIG & AI VISION CONSOLE STYLES (PS 06)
+   ========================================================================== */
+.camera-rig-grid {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.camera-feed-card {
+  background: #0b1410;
+  border: 1px solid rgba(0, 229, 155, 0.22);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+.camera-feed-card.main-front {
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 12px 35px rgba(2, 132, 199, 0.15);
+}
+
+.camera-feed-card.peripheral {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #080d0a;
+}
+
+.feed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(10, 20, 16, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font: 10px 'DM Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.feed-source-tag {
+  color: #38bdf8;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feed-source-tag.not-configured {
+  color: #ff757b;
+}
+
+.feed-badge {
+  font: 9px 'DM Mono', monospace;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.feed-badge.live {
+  background: #082818;
+  color: #00e59b;
+  border: 1px solid #145a38;
+}
+
+.feed-badge.not-configured {
+  background: #2b1114;
+  color: #ff757b;
+  border: 1px solid #5c1e24;
+}
+
+.feed-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #030705;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.feed-viewport.small {
+  aspect-ratio: 16 / 8.5;
+  background: #050806;
+}
+
+.feed-stream-canvas,
+.feed-stream-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.feed-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #637b6f;
+  text-align: center;
+  padding: 20px;
+}
+
+.feed-placeholder .placeholder-icon {
+  font-size: 28px;
+  opacity: 0.8;
+}
+
+.feed-placeholder .placeholder-text {
+  font-weight: 700;
+  font-size: 13px;
+  color: #a4beaf;
+}
+
+.feed-placeholder small {
+  font-size: 10px;
+  color: #556c5e;
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.feed-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: #060b08;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font: 9px 'DM Mono', monospace;
+  color: #698375;
+}
+
+.peripheral-cameras-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+

@@ -48,7 +48,10 @@
     pendingRoute: null,
     telemetry: null,
     placementMode: null,       // 'Obstacle' | 'Pedestrian Moving' | 'Construction Working' | 'Road Blocked'
-    selectedToolType: 'Obstacle'
+    selectedToolType: 'Obstacle',
+    isYieldingWait: false,
+    yieldCountdown: 0,
+    clearedHazardIds: new Set()
   };
 
   const ROUTE_COLORS = ['#00e59b', '#4ca9ff', '#b58aff', '#ffb84d'];
@@ -406,7 +409,10 @@
       description = description || 'Full road closure · Police barricade / Impassable corridor';
     } else if (type === 'Pedestrian Moving') {
       severity = 'High';
-      description = description || 'Pedestrian crossing roadway (Dynamic motion)';
+      description = description || 'Pedestrian crossing roadway (Dynamic motion - Vehicle yields)';
+    } else if (type === 'Animal Crossing' || type === 'Stray Animal') {
+      severity = 'High';
+      description = description || 'Stray animal / cattle crossing roadway (Vehicle stops & waits)';
     } else if (type === 'Construction Working') {
       severity = 'Medium';
       description = description || 'Active work zone · Lane restriction & machinery';
@@ -415,6 +421,8 @@
       description = description || 'Roadway obstacle (Pothole / Debris anomaly)';
     }
 
+    const isMoving = (type === 'Pedestrian Moving' || type === 'Animal Crossing' || type === 'Stray Animal');
+
     try {
       const res = await api('/api/hazards', {
         lat,
@@ -422,9 +430,9 @@
         type,
         severity,
         description,
-        is_moving: type === 'Pedestrian Moving',
-        speed_kmh: type === 'Pedestrian Moving' ? 4.5 : 0,
-        radius_m: type === 'Construction Working' ? 120 : (type === 'Road Blocked' ? 60 : 30)
+        is_moving: isMoving,
+        speed_kmh: isMoving ? (type === 'Pedestrian Moving' ? 4.5 : 3.0) : 0,
+        radius_m: type === 'Construction Working' ? 120 : (type === 'Road Blocked' ? 60 : 35)
       });
 
       const hazard = res.hazard;
@@ -452,7 +460,9 @@
 
   function triggerPerceptionAlert(type) {
     if (type === 'Pedestrian Moving') {
-      log('Perception Stack: Radar/Camera', 'Target classified: Pedestrian (Walking motion detected).', 'green');
+      log('Perception Stack: Radar/Camera', 'Target classified: Pedestrian (Walking motion detected - Vehicle will yield).', 'green');
+    } else if (type === 'Animal Crossing' || type === 'Stray Animal') {
+      log('Perception Stack: Camera/LiDAR', 'Target classified: Stray Animal / Cattle Crossing (Vehicle will stop & wait).', 'amber');
     } else if (type === 'Construction Working') {
       log('Perception Stack: Camera/LiDAR', 'Target classified: Road Construction & Barricades.', 'amber');
     } else if (type === 'Road Blocked') {
@@ -481,6 +491,11 @@
       iconHtml = `<div class="rg-marker-wrap rg-marker-pedestrian"><span class="rg-pulse-ring"></span><div class="rg-marker-pin">🚶</div></div>`;
       circleColor = '#4ca9ff';
       circleRadius = 35;
+    } else if (h.type === 'Animal Crossing' || h.type === 'Stray Animal') {
+      markerClass = 'rg-marker-animal';
+      iconHtml = `<div class="rg-marker-wrap rg-marker-animal"><span class="rg-pulse-ring"></span><div class="rg-marker-pin">🐕</div></div>`;
+      circleColor = '#a78bfa';
+      circleRadius = 40;
     } else if (h.type === 'Construction Working') {
       markerClass = 'rg-marker-construction';
       iconHtml = `<div class="rg-marker-wrap rg-marker-construction"><span class="rg-pulse-ring"></span><div class="rg-marker-pin">🚧</div></div>`;
@@ -529,7 +544,8 @@
           <div><strong>Status:</strong> ${h.status || 'ACTIVE'}</div>
           <div><strong>Coordinates:</strong> ${Number(h.lat).toFixed(5)}, ${Number(h.lng).toFixed(5)}</div>
           <div><strong>Details:</strong> ${h.description || 'Reported on map'}</div>
-          ${h.type === 'Pedestrian Moving' ? '<div><strong>Speed:</strong> ~4.5 km/h (Moving crosswalk)</div>' : ''}
+          ${h.type === 'Pedestrian Moving' ? '<div><strong>Speed:</strong> ~4.5 km/h (Moving crosswalk - Vehicle yields)</div>' : ''}
+          ${(h.type === 'Animal Crossing' || h.type === 'Stray Animal') ? '<div><strong>Speed:</strong> ~3.0 km/h (Stray Animal - Vehicle stops & waits)</div>' : ''}
           ${h.type === 'Construction Working' ? '<div><strong>Advisory:</strong> 20 km/h Caution Perimeter</div>' : ''}
           ${h.type === 'Road Blocked' ? '<div style="color:#ff858b"><strong>Action:</strong> Dynamic reroute triggered</div>' : ''}
         </div>
@@ -565,9 +581,9 @@
       renderHazards();
     });
 
-    // Pedestrian dynamic motion animation!
+    // Pedestrian and Stray Animal dynamic motion animation!
     let animTimer = null;
-    if (h.type === 'Pedestrian Moving' || h.is_moving) {
+    if (h.type === 'Pedestrian Moving' || h.type === 'Animal Crossing' || h.type === 'Stray Animal' || h.is_moving) {
       let step = 0;
       const baseLat = h.lat;
       const baseLng = h.lng;
@@ -588,7 +604,7 @@
         if (state.currentPosition) {
           const d = haversine(state.currentPosition, { lat: curLat, lng: curLng });
           if (d < 0.06) { // under 60 meters
-            $('vehicleHealth').textContent = 'YIELD (PEDESTRIAN)';
+            $('vehicleHealth').textContent = h.type === 'Pedestrian Moving' ? 'YIELD (PEDESTRIAN)' : 'YIELD (ANIMAL)';
             $('vehicleHealth').style.color = 'var(--amber)';
           }
         }
@@ -623,6 +639,7 @@
 
       let symbol = '⚠️';
       if (h.type === 'Pedestrian Moving') symbol = '🚶';
+      else if (h.type === 'Animal Crossing' || h.type === 'Stray Animal') symbol = '🐕';
       else if (h.type === 'Construction Working') symbol = '🚧';
       else if (h.type === 'Road Blocked') symbol = '⛔';
 
@@ -751,6 +768,13 @@
       });
       state.map.setView([pt.lat, pt.lng], 15);
       toast('🎬 Scenario: Pedestrian Crossing activated! Rerouting trajectory.');
+    } else if (scenarioKey === 'animal') {
+      const pt = coords[Math.floor(coords.length * 0.42)];
+      await insertHazard('Animal Crossing', pt.lat, pt.lng, {
+        description: 'Review Demo: Stray cattle / dog crossing corridor (Vehicle stops & waits)'
+      });
+      state.map.setView([pt.lat, pt.lng], 15);
+      toast('🎬 Scenario: Stray Animal Crossing activated! Vehicle will stop & wait.');
     } else if (scenarioKey === 'construction') {
       const pt = coords[Math.floor(coords.length * 0.5)];
       await insertHazard('Construction Working', pt.lat, pt.lng, {
@@ -1040,6 +1064,7 @@
     if (h.type === 'Construction Working') thresholdKm = 0.15; // 150m for construction zone
     else if (h.type === 'Road Blocked') thresholdKm = 0.12;     // 120m for road block
     else if (h.type === 'Pedestrian Moving') thresholdKm = 0.07; // 70m for pedestrians
+    else if (h.type === 'Animal Crossing' || h.type === 'Stray Animal') thresholdKm = 0.08; // 80m for animals
 
     for (let i = 0; i < coords.length - 1; i++) {
       const res = pointToSegmentDistance(h, coords[i], coords[i + 1]);
@@ -1317,32 +1342,32 @@
     if (state.demoTimer) {
       clearInterval(state.demoTimer);
       state.demoTimer = null;
-      $('demoBtn').textContent = '▶ Demo drive';
-      toast('Demo drive paused');
+      $('demoBtn').textContent = '▶ Start Drive';
+      toast('Autonomous drive paused');
       return;
     }
 
     state.activeDemoCoords = routeCoords(state.routes[state.selected] || {});
     if (state.activeDemoCoords.length < 2) {
-      toast('Calculate a route before starting the demo drive.');
+      toast('Calculate a route before starting the autonomous drive.');
       return;
     }
 
     state.demoIndex = 0;
-    $('demoBtn').textContent = 'Ⅱ Pause demo';
-    log('Demo drive started', 'Autonomous vehicle simulation underway along selected corridor.', 'green');
+    $('demoBtn').textContent = '⏸ Pause Drive';
+    log('Autonomous drive started', 'Autonomous vehicle simulation underway along selected corridor.', 'green');
 
     state.demoTimer = setInterval(() => {
       const coords = state.activeDemoCoords;
       if (state.demoIndex >= coords.length) {
         clearInterval(state.demoTimer);
         state.demoTimer = null;
-        $('demoBtn').textContent = '▶ Demo drive';
+        $('demoBtn').textContent = '▶ Start Drive';
         $('vehicleHealth').textContent = 'DESTINATION';
         $('speedVal').textContent = '0';
         $('speedGauge').style.width = '0%';
-        log('Demo route completed', 'Vehicle reached target destination safely.', 'green');
-        toast('Demo drive completed!');
+        log('Route completed', 'Vehicle reached target destination safely.', 'green');
+        toast('Autonomous drive completed!');
         return;
       }
 
@@ -1353,15 +1378,47 @@
       const nearHazard = state.hazards.find(h => haversine(h, p) < 0.16);
       let targetSpeed = 42;
 
-      if (nearHazard) {
+      // Yield, Stop & Auto-Resume State Machine for Pedestrian & Animal Crossing
+      const isCrossingActor = nearHazard && (
+        nearHazard.type === 'Pedestrian Moving' || 
+        nearHazard.type === 'Animal Crossing' || 
+        nearHazard.type === 'Stray Animal'
+      );
+
+      if (isCrossingActor && !state.clearedHazardIds.has(nearHazard.id)) {
+        // Vehicle comes to a safe stop and waits for actor to finish crossing
+        targetSpeed = 0;
+        if (!state.isYieldingWait) {
+          state.isYieldingWait = true;
+          state.yieldCountdown = 5; // ~2.5 seconds wait while actor crosses
+          log('Autonomous Yield Stop', `${nearHazard.type} crossing corridor ahead. Vehicle stopped at safe clearance buffer (0 km/h). Waiting for actor to clear roadway.`, 'amber');
+          toast(`🛑 Vehicle stopped: ${nearHazard.type} crossing road. Waiting for clearance...`);
+        }
+
+        if (state.yieldCountdown > 0) {
+          state.yieldCountdown--;
+          state.demoIndex = Math.max(0, state.demoIndex - 1); // Keep vehicle held at stopping position
+          $('vehicleHealth').textContent = `STOPPED: WAITING FOR ${nearHazard.type.toUpperCase()} TO CROSS (${state.yieldCountdown}s)`;
+          $('vehicleHealth').style.color = 'var(--red)';
+          $('speedVal').textContent = '0';
+          $('speedGauge').style.width = '0%';
+          $('vehicleStatus').textContent = 'Yielding right-of-way to crossing road user';
+          $('updateVal').textContent = new Date().toLocaleTimeString();
+          updateVehicleMarker(p.lat, p.lng);
+          return;
+        } else {
+          // Actor has cleared! Resume travel in the same way!
+          state.isYieldingWait = false;
+          state.clearedHazardIds.add(nearHazard.id);
+          log('Corridor Cleared - Resuming', `${nearHazard.type} has safely finished crossing. Vehicle resuming nominal autonomous route navigation.`, 'green');
+          toast(`✅ Corridor cleared: ${nearHazard.type} passed safely. Resuming drive along route!`);
+          targetSpeed = 42;
+        }
+      } else if (nearHazard) {
         if (nearHazard.type === 'Road Blocked') {
           targetSpeed = 0;
           $('vehicleHealth').textContent = 'ROAD BLOCKED';
           $('vehicleHealth').style.color = 'var(--red)';
-        } else if (nearHazard.type === 'Pedestrian Moving') {
-          targetSpeed = 14;
-          $('vehicleHealth').textContent = 'SLOWING (PEDESTRIAN)';
-          $('vehicleHealth').style.color = 'var(--amber)';
         } else if (nearHazard.type === 'Construction Working') {
           targetSpeed = 20;
           $('vehicleHealth').textContent = 'WORK ZONE (20 km/h)';
@@ -1440,6 +1497,7 @@
     // Toolbar buttons for entity insertion
     $('toolObstacle')?.addEventListener('click', () => setPlacementMode('Obstacle'));
     $('toolPedestrian')?.addEventListener('click', () => setPlacementMode('Pedestrian Moving'));
+    $('toolAnimal')?.addEventListener('click', () => setPlacementMode('Animal Crossing'));
     $('toolConstruction')?.addEventListener('click', () => setPlacementMode('Construction Working'));
     $('toolRoadBlocked')?.addEventListener('click', () => setPlacementMode('Road Blocked'));
 

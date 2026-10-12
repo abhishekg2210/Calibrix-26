@@ -117,7 +117,8 @@
         <div class="panel report-panel" id="reportPanel" hidden>
           <div class="panel-title">Report a road entity / hazard</div><label>TYPE<select id="hazardType">
               <option value="Obstacle" selected>⚠️ Obstacle (Pothole / Debris / Hazard)</option>
-              <option value="Pedestrian Moving">🚶 Pedestrian Moving (Animated Crosswalk)</option>
+              <option value="Pedestrian Moving">🚶 Pedestrian Moving (Animated Crosswalk - Vehicle Yields)</option>
+              <option value="Animal Crossing">🐕 Stray Animal / Cattle Crossing (Vehicle Stops & Waits)</option>
               <option value="Construction Working">🚧 Construction Working (Work Zone)</option>
               <option value="Road Blocked">⛔ Road Blocked (Corridor Impassable)</option>
               <option value="Pothole">Pothole</option>
@@ -151,7 +152,7 @@
           <div class="map-controls">
             <button id="trafficBtn" class="control-button">▤ Congestion layer</button>
             <button id="followBtn" class="control-button">◎ Follow vehicle</button>
-            <button id="demoBtn" class="control-button">▶ Demo drive</button>
+            <button id="demoBtn" class="control-button">▶ Start Drive</button>
           </div>
         </div>
 
@@ -171,6 +172,11 @@
               title="Insert moving pedestrian (animated crosswalk / walking pedestrian)">
               <span class="tool-icon">🚶</span>
               <span class="tool-label">Pedestrian Moving</span>
+            </button>
+            <button type="button" class="entity-tool-btn" id="toolAnimal" data-type="Animal Crossing"
+              title="Insert crossing animal / dog / cattle (vehicle stops, yields & waits)">
+              <span class="tool-icon">🐕</span>
+              <span class="tool-label">Animal Crossing</span>
             </button>
             <button type="button" class="entity-tool-btn" id="toolConstruction" data-type="Construction Working"
               title="Insert active construction work zone with caution perimeter">
@@ -198,7 +204,11 @@
                 <button type="button" class="scenario-item" data-scenario="pedestrian">
                   <span class="scen-icon">🚶</span>
                   <div><b>Pedestrian Crossing Ahead</b><small>Spawns moving pedestrian crossing current vehicle
-                      path</small></div>
+                      path (yield, wait & resume)</small></div>
+                </button>
+                <button type="button" class="scenario-item" data-scenario="animal">
+                  <span class="scen-icon">🐕</span>
+                  <div><b>Stray Animal / Cattle Crossing</b><small>Spawns dog/cattle crossing route. Vehicle stops, waits, and resumes.</small></div>
                 </button>
                 <button type="button" class="scenario-item" data-scenario="construction">
                   <span class="scen-icon">🚧</span>
@@ -476,6 +486,7 @@
           <div class="header-action-group">
             <span class="badge-pill badge-live" id="backendHealthBadge">BACKEND: CONNECTING...</span>
             <span class="badge-pill badge-live" id="modelStatusBadge">ENGINE: INITIALIZING...</span>
+            <button type="button" class="action-btn-pill active" id="liveVisionFeedBtn">🟢 Live Autonomous Vision</button>
             <label class="action-btn-pill upload-label" title="Upload on-road MP4/AVI/MOV/MKV/WEBM for inference">
               <span>📹 Upload On-Road Video</span>
               <input type="file" id="videoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
@@ -493,11 +504,12 @@
           <div class="camera-feed-card main-front">
             <div class="feed-header">
               <span class="feed-source-tag live">CAMERA 01 (FRONT) — PRIMARY SENSOR</span>
-              <span class="feed-badge live" id="frontCamSourceBadge">SOURCE: UPLOADED VIDEO / PRIMARY SENSOR</span>
+              <span class="feed-badge live" id="frontCamSourceBadge">SOURCE: LIVE AUTONOMOUS CAMERA SENSOR</span>
             </div>
             <div class="feed-viewport">
+              <canvas id="frontCamLiveCanvas" width="640" height="360" class="feed-stream-canvas"></canvas>
               <img id="frontCamImage" class="feed-stream-img" alt="Front Camera Feed" hidden>
-              <div id="frontCamPlaceholder" class="feed-placeholder">
+              <div id="frontCamPlaceholder" class="feed-placeholder" hidden>
                 <div class="placeholder-icon">📷</div>
                 <div class="placeholder-text">Front Autonomous Camera Standby</div>
                 <small>Upload an on-road video (MP4/AVI/MOV) or click "Test Frame Detection" to run real YOLO inference.</small>
@@ -506,7 +518,7 @@
             <div class="feed-footer">
               <span>FOV: 120° Wide-Angle HD</span>
               <span>Input: 640x640 Tensor</span>
-              <span id="videoSourceTypeLabel">STATUS: STANDBY (NO VIDEO LOADED)</span>
+              <span id="videoSourceTypeLabel">STATUS: ACTIVE INFERENCE (YOLOv8 DETECTIONS & TRACKING)</span>
             </div>
           </div>
 
