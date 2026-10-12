@@ -134,6 +134,7 @@ def api_me():
 # -----------------------------------------------------------------------------
 
 @app.post("/api/route")
+@app.post("/api/routes")
 @login_required
 def api_route():
     data = request.get_json(silent=True) or {}
@@ -181,6 +182,8 @@ def api_route():
         ok=True,
         routes=res["routes"],
         total_alternatives=res.get("total_alternatives", 0),
+        all_blocked=res.get("all_blocked", False),
+        unblocked_alternative_available=res.get("unblocked_alternative_available", True),
         provider=res.get("provider"),
         traffic_live=res.get("traffic_live", False),
         note=res.get("note")

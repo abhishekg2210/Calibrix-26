@@ -301,7 +301,10 @@
               <span id="rerouteBannerSubtitle">Vehicle corridor altered: Detouring around road obstacle</span>
             </div>
           </div>
-          <div class="reroute-banner-badge" id="rerouteBannerBadge">SAFE BYPASS</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="reroute-banner-badge" id="rerouteBannerBadge">SAFE BYPASS</div>
+            <button type="button" class="retry-route-btn" id="retryRouteBtn" hidden title="Retry calculating an open detour or bypass corridor">⟳ Retry Route</button>
+          </div>
         </div>
 
         <!-- Placement Mode Indicator Banner -->
@@ -361,6 +364,76 @@
           </div>
           <div class="source-note" id="sourceNote">Pure Software Kinematic Simulation & Planner (100% Software - No Hardware Required).</div>
         </div>
+
+        <!-- Simulation Safety Controls & Sensor Modes Panel -->
+        <div class="simulation-test-panel" id="simTestPanel">
+          <div class="sim-test-header">
+            <div>
+              <b>SIMULATION SAFETY CONTROLS</b>
+              <div style="font:8px 'DM Mono',monospace;color:#6b8577;margin-top:2px;">EXPLICIT SAFETY TEST HARNESS</div>
+            </div>
+            <span class="sim-test-badge" id="simSensorSourceBadge">[SIMULATED SENSOR]</span>
+          </div>
+          <div class="sim-control-grid">
+            <button type="button" class="sim-control-btn btn-pedestrian" id="simPedestrianDetectBtn" title="Simulate pedestrian detected entering crosswalk ahead (Vehicle decelerates to 0 km/h stop)">
+              <span>🚶</span>
+              <div>
+                <div>Pedestrian Detected</div>
+                <small style="color:#7ab6d6">Stop & Hold (0 km/h)</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-pedestrian" id="simPedestrianClearBtn" title="Simulate pedestrian confirming reached sidewalk (2.5s safety interval before resuming)">
+              <span>✅</span>
+              <div>
+                <div>Crossing Clear</div>
+                <small style="color:#7ab6d6">2.5s Hysteresis Resume</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-blockage" id="simBlockRouteBtn" title="Simulate road blockage on active corridor triggering auto-reroute">
+              <span>⛔</span>
+              <div>
+                <div>Road Blocked</div>
+                <small style="color:#f87171">Auto-Reroute</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-blockage" id="simClearBlockBtn" title="Clear road blockages from corridor">
+              <span>✓</span>
+              <div>
+                <div>Clear Blockage</div>
+                <small style="color:#f87171">Restores Corridor</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-construction" id="simConstructionBtn" title="Simulate construction zone ahead on route">
+              <span>🚧</span>
+              <div>
+                <div>Construction Zone</div>
+                <small style="color:#fb923c">Detour / Reroute</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-construction" id="simClearConstructionBtn" title="Clear construction zones from corridor">
+              <span>✓</span>
+              <div>
+                <div>Clear Work Zone</div>
+                <small style="color:#fb923c">Restores Speed</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-sensor" id="simSensorTimeoutBtn" title="Simulate sensor feed timeout/unavailable (holds safe 0 km/h stop)">
+              <span>⚠️</span>
+              <div>
+                <div>Sensor Unavailable</div>
+                <small style="color:#facc15">Holds Safe Stop</small>
+              </div>
+            </button>
+            <button type="button" class="sim-control-btn btn-sensor" id="simSensorRestoreBtn" title="Restore nominal perception sensor stream">
+              <span>🔄</span>
+              <div>
+                <div>Restore Sensors</div>
+                <small style="color:#facc15">Stream Online</small>
+              </div>
+            </button>
+          </div>
+        </div>
+
         <div class="section-heading compact rail-section">
           <div><span class="eyebrow">SENSOR STATUS</span>
             <h2>Perception stack</h2>

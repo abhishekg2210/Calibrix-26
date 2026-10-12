@@ -91,7 +91,8 @@ def query_osrm_single(coords_str: str, timeout: int = 10) -> Optional[Dict[str, 
 def calculate_routes(
     start: Dict[str, float],
     end: Dict[str, float],
-    active_hazards: Optional[List[Dict[str, Any]]] = None
+    active_hazards: Optional[List[Dict[str, Any]]] = None,
+    hazards: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
     Calculate primary and genuine alternative routes.
@@ -136,7 +137,7 @@ def calculate_routes(
                 break
 
     parsed_routes = []
-    active_hazards = active_hazards or []
+    active_hazards = active_hazards or hazards or []
 
     for idx, r in enumerate(raw_routes):
         dist_km = round(r["distance"] / 1000.0, 2)
@@ -209,11 +210,16 @@ def calculate_routes(
                 r["recommendation_reason"] = f"+{delta} min compared to recommended"
         del r["_score"]
 
+    all_blocked = len(parsed_routes) > 0 and all(r.get("is_blocked", False) for r in parsed_routes)
+    unblocked_alternative_available = any(not r.get("is_blocked", False) for r in parsed_routes)
+
     return {
         "ok": True,
         "routes": parsed_routes,
         "total_alternatives": len(parsed_routes) - 1,
+        "all_blocked": all_blocked,
+        "unblocked_alternative_available": unblocked_alternative_available,
         "provider": "OSRM (OpenStreetMap) Driving Engine",
         "traffic_live": False,
-        "note": "Route estimates calculated. Integrate Google Maps Platform or Mapbox in .env for live congestion."
+        "note": "Route estimates calculated. Simulated sensor & obstacle avoidance active."
     }
