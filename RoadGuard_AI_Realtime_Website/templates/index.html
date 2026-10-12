@@ -1,135 +1,1038 @@
 <!doctype html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RoadGuard AI | Adaptive Navigation</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RoadGuard AI | Adaptive Navigation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='autonomous_dashboard.css') }}">
 </head>
+
 <body>
-<div class="app-shell">
-<header class="topbar"><div class="brand"><div class="brand-mark">RG</div><div><strong>ROADGUARD <span>AI</span></strong><small>IRIE ADAPTIVE NAVIGATION SYSTEM</small></div></div>
-<div class="top-status"><span class="live-dot"></span><span id="systemStatus">SYSTEM READY</span><span class="separator"></span><span id="mapProvider">LEAFLET ACTIVE (CARTO/OSM)</span></div>
-<div class="top-actions"><button class="icon-button" id="themeBtn" title="Switch map theme (Dark/Street/Voyager)">◐ Map Style</button><div class="operator"><div class="avatar">{{ user.username[0].upper() if user and user.username else 'O' }}</div><div><b>{{ user.full_name or user.username or 'Operator' }}</b><small>{{ (user.role or 'operator').upper() }}</small></div></div><form action="/api/auth/logout" method="post" id="logoutForm"><button class="ghost-button" type="submit">Log out ↗</button></form></div></header>
-<main class="workspace">
-<aside class="sidebar">
-<div class="section-heading"><div><span class="eyebrow">MISSION CONTROL</span><h1>Route planner</h1></div><span class="status-tag" id="routingModeTag">READY</span></div>
-<div class="route-form panel"><div class="field-label">ORIGIN (STARTING POINT)</div><div class="location-field"><span class="point-icon origin"></span><input id="originInput" placeholder="Detecting current GPS location..." value="📍 Current Location"><button id="useLocationBtn" title="Detect & Use Current GPS Location">◎</button></div><div class="field-label">DESTINATION</div><div class="location-field"><span class="point-icon destination"></span><input id="destinationInput" placeholder="Search destination" value="Coimbatore Railway Station"><button id="swapBtn" title="Swap origin and destination">↕</button></div><div class="form-grid"><label>TRAVEL MODE<select id="travelMode"><option value="DRIVE">Driving</option></select></label><label>REROUTING<select id="rerouteMode"><option value="automatic" selected>Automatic reroute</option><option value="approval">Ask before switching</option></select></label></div><button class="primary-button" id="calculateBtn"><span>⌁</span> Calculate routes <span class="button-arrow">→</span></button><div class="small-note" id="routeProviderNote">Route estimates appear after calculation.</div></div>
-<div class="section-heading compact"><div><span class="eyebrow">ROUTE OPTIONS</span><h2>Available corridors</h2></div><span class="count-pill" id="routeCount">0</span></div><div id="routeList" class="route-list"><div class="empty-state"><div class="empty-icon">⌁</div><b>No route calculated</b><span>Choose an origin and destination to compare routes.</span></div></div>
-<div class="section-heading compact"><div><span class="eyebrow">ROAD INTELLIGENCE</span><h2>Hazard & entity monitor</h2></div><div class="header-action-group"><button class="text-button" id="reportHazardBtn">+ Form</button><button class="text-button danger-text" id="clearHazardsSidebarBtn">Clear</button></div></div><div class="hazard-disclaimer">Interactive AI perception simulation: Add obstacles, moving pedestrians, construction, or road blocks directly onto the Leaflet map for project review.</div><div id="hazardList" class="hazard-list"><div class="empty-inline">No active entities on map. Use the toolbar above map or click to insert.</div></div>
-<div class="panel report-panel" id="reportPanel" hidden><div class="panel-title">Report a road entity / hazard</div><label>TYPE<select id="hazardType"><option value="Obstacle" selected>⚠️ Obstacle (Pothole / Debris / Hazard)</option><option value="Pedestrian Moving">🚶 Pedestrian Moving (Animated Crosswalk)</option><option value="Construction Working">🚧 Construction Working (Work Zone)</option><option value="Road Blocked">⛔ Road Blocked (Corridor Impassable)</option><option value="Pothole">Pothole</option><option value="Road crack">Road crack</option><option value="Waterlogging">Waterlogging</option><option value="Accident">Accident</option><option value="Barricade">Barricade</option><option value="Other">Other</option></select></label><label>SEVERITY<select id="hazardSeverity"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select></label><div class="form-grid"><label>LATITUDE<input id="hazardLat" type="number" step="any" placeholder="11.0168"></label><label>LONGITUDE<input id="hazardLng" type="number" step="any" placeholder="76.9558"></label></div><div class="button-row"><button class="secondary-button" id="cancelReportBtn">Cancel</button><button class="primary-button small" id="submitHazardBtn">Submit report</button></div></div>
-<div class="sidebar-footer"><span class="mini-shield">◇</span><div><b>Autonomous Safety AI</b><small>Continuous perception evaluation with dynamic multi-corridor rerouting.</small></div></div>
-</aside>
-<section class="map-area">
-<div class="map-toolbar">
-<div><span class="eyebrow">LEAFLET NAVIGATION COCKPIT</span><div class="map-title">Route intelligence <span class="map-live-pill"><i></i> LEAFLET ONLINE</span></div></div>
-<div class="map-controls">
-<button id="trafficBtn" class="control-button">▤ Congestion layer</button>
-<button id="followBtn" class="control-button">◎ Follow vehicle</button>
-<button id="demoBtn" class="control-button">▶ Demo drive</button>
-</div>
-</div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">RG</div>
+        <div><strong>ROADGUARD <span>AI</span></strong><small>IRIE ADAPTIVE NAVIGATION SYSTEM</small></div>
+      </div>
+      <div class="top-status"><span class="live-dot"></span><span id="systemStatus">SYSTEM READY</span><span
+          class="separator"></span><span id="mapProvider">LEAFLET ACTIVE (CARTO/OSM)</span></div>
+      <div class="top-actions"><button class="icon-button" id="themeBtn"
+          title="Switch map theme (Dark/Street/Voyager)">◐ Map Style</button>
+        <div class="operator">
+          <div class="avatar">{{ user.username[0].upper() if user and user.username else 'O' }}</div>
+          <div><b>{{ user.full_name or user.username or 'Operator' }}</b><small>{{ (user.role or 'operator').upper()
+              }}</small></div>
+        </div>
+        <form action="/api/auth/logout" method="post" id="logoutForm"><button class="ghost-button" type="submit">Log out
+            ↗</button></form>
+      </div>
+    </header>
 
-<!-- Interactive Entity Insertion Toolbar for Leaflet Map -->
-<div class="map-entity-toolbar" id="entityToolbar">
-<div class="entity-toolbar-label">
-<span class="toolbar-dot"></span>
-<b>INSERT ON MAP:</b>
-</div>
-<div class="entity-tool-group">
-<button type="button" class="entity-tool-btn" id="toolObstacle" data-type="Obstacle" title="Insert road obstacle (pothole, fallen tree, road debris)">
-<span class="tool-icon">⚠️</span>
-<span class="tool-label">Obstacle</span>
-</button>
-<button type="button" class="entity-tool-btn" id="toolPedestrian" data-type="Pedestrian Moving" title="Insert moving pedestrian (animated crosswalk / walking pedestrian)">
-<span class="tool-icon">🚶</span>
-<span class="tool-label">Pedestrian Moving</span>
-</button>
-<button type="button" class="entity-tool-btn" id="toolConstruction" data-type="Construction Working" title="Insert active construction work zone with caution perimeter">
-<span class="tool-icon">🚧</span>
-<span class="tool-label">Construction</span>
-</button>
-<button type="button" class="entity-tool-btn" id="toolRoadBlocked" data-type="Road Blocked" title="Insert road blockage (forces instant corridor rerouting)">
-<span class="tool-icon">⛔</span>
-<span class="tool-label">Road Blocked</span>
-</button>
-</div>
-<div class="entity-actions-group">
-<button type="button" class="entity-action-btn highlight" id="quickAddOnRouteBtn" title="Automatically drop selected item onto active route for instant detection">
-<span>⚡</span> Quick Add on Route
-</button>
-<div class="scenarios-menu-wrap">
-<button type="button" class="entity-action-btn" id="demoScenariosBtn" title="Pre-configured review demonstration scenarios">
-<span>🎬</span> Review Scenarios ▾
-</button>
-<div class="scenarios-dropdown" id="scenariosDropdown" hidden>
-<div class="dropdown-header">PROJECT REVIEW PRESETS</div>
-<button type="button" class="scenario-item" data-scenario="pedestrian">
-<span class="scen-icon">🚶</span>
-<div><b>Pedestrian Crossing Ahead</b><small>Spawns moving pedestrian crossing current vehicle path</small></div>
-</button>
-<button type="button" class="scenario-item" data-scenario="construction">
-<span class="scen-icon">🚧</span>
-<div><b>Work Zone Ahead (20 km/h)</b><small>Places active construction & speed caution perimeter</small></div>
-</button>
-<button type="button" class="scenario-item" data-scenario="blockage">
-<span class="scen-icon">⛔</span>
-<div><b>Corridor Blockage & Auto-Reroute</b><small>Blocks main highway & demonstrates instant bypass switch</small></div>
-</button>
-<button type="button" class="scenario-item" data-scenario="combo">
-<span class="scen-icon">🚨</span>
-<div><b>Full Urban Perception Stack</b><small>Deploys obstacle + moving pedestrian + work zone</small></div>
-</button>
-</div>
-</div>
-<button type="button" class="entity-action-btn danger" id="clearAllHazardsBtn" title="Remove all placed entities from the map">
-<span>🗑️</span> Clear All
-</button>
-</div>
-</div>
+    <!-- Research Prototype Navigation Tabs -->
+    <nav class="research-nav-tabs" id="researchNavTabs">
+      <button type="button" class="nav-tab active" data-tab="tab-cockpit">
+        <span class="tab-icon">🗺️</span> Map Cockpit
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-perception">
+        <span class="tab-icon">🎯</span> AI Perception & Multi-Cam
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-simulink">
+        <span class="tab-icon">⚡</span> MathWorks Simulink
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-scenarios">
+        <span class="tab-icon">🎬</span> 5 Indian Road Scenarios
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-carla">
+        <span class="tab-icon">🌐</span> CARLA Simulator
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-dataset">
+        <span class="tab-icon">📊</span> Dataset & Training
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-verification">
+        <span class="tab-icon">🛡️</span> Verification Matrix
+      </button>
+    </nav>
 
-<!-- Dynamic Reroute Alert Banner -->
-<div class="dynamic-reroute-banner" id="dynamicRerouteBanner" hidden>
-  <div class="reroute-banner-left">
-    <span class="reroute-pulse-dot"></span>
-    <span class="reroute-banner-icon">🔄</span>
-    <div class="reroute-banner-text">
-      <b id="rerouteBannerTitle">DYNAMIC REROUTE ACTIVE</b>
-      <span id="rerouteBannerSubtitle">Vehicle corridor altered: Detouring around road obstacle</span>
+    <!-- 1. MAP COCKPIT VIEW (Preserves existing Leaflet interactive planner) -->
+    <div class="tab-view active" id="view-cockpit">
+      <main class="workspace">
+      <aside class="sidebar">
+        <div class="section-heading">
+          <div><span class="eyebrow">MISSION CONTROL</span>
+            <h1>Route planner</h1>
+          </div><span class="status-tag" id="routingModeTag">READY</span>
+        </div>
+        <div class="route-form panel">
+          <div class="field-label">ORIGIN (STARTING POINT)</div>
+          <div class="location-field"><span class="point-icon origin"></span><input id="originInput"
+              placeholder="Detecting current GPS location..." value="📍 Current Location"><button id="useLocationBtn"
+              title="Detect & Use Current GPS Location">◎</button></div>
+          <div class="field-label">DESTINATION</div>
+          <div class="location-field"><span class="point-icon destination"></span><input id="destinationInput"
+              placeholder="Search destination" value="Coimbatore Railway Station"><button id="swapBtn"
+              title="Swap origin and destination">↕</button></div>
+          <div class="form-grid"><label>TRAVEL MODE<select id="travelMode">
+                <option value="DRIVE">Driving</option>
+              </select></label><label>REROUTING<select id="rerouteMode">
+                <option value="automatic" selected>Automatic reroute</option>
+                <option value="approval">Ask before switching</option>
+              </select></label></div><button class="primary-button" id="calculateBtn"><span>⌁</span> Calculate routes
+            <span class="button-arrow">→</span></button>
+          <div class="small-note" id="routeProviderNote">Route estimates appear after calculation.</div>
+        </div>
+        <div class="section-heading compact">
+          <div><span class="eyebrow">ROUTE OPTIONS</span>
+            <h2>Available corridors</h2>
+          </div><span class="count-pill" id="routeCount">0</span>
+        </div>
+        <div id="routeList" class="route-list">
+          <div class="empty-state">
+            <div class="empty-icon">⌁</div><b>No route calculated</b><span>Choose an origin and destination to compare
+              routes.</span>
+          </div>
+        </div>
+        <div class="section-heading compact">
+          <div><span class="eyebrow">ROAD INTELLIGENCE</span>
+            <h2>Hazard & entity monitor</h2>
+          </div>
+          <div class="header-action-group"><button class="text-button" id="reportHazardBtn">+ Form</button><button
+              class="text-button danger-text" id="clearHazardsSidebarBtn">Clear</button></div>
+        </div>
+        <div class="hazard-disclaimer">Interactive AI perception simulation: Add obstacles, moving pedestrians,
+          construction, or road blocks directly onto the Leaflet map for project review.</div>
+        <div id="hazardList" class="hazard-list">
+          <div class="empty-inline">No active entities on map. Use the toolbar above map or click to insert.</div>
+        </div>
+        <div class="panel report-panel" id="reportPanel" hidden>
+          <div class="panel-title">Report a road entity / hazard</div><label>TYPE<select id="hazardType">
+              <option value="Obstacle" selected>⚠️ Obstacle (Pothole / Debris / Hazard)</option>
+              <option value="Pedestrian Moving">🚶 Pedestrian Moving (Animated Crosswalk)</option>
+              <option value="Construction Working">🚧 Construction Working (Work Zone)</option>
+              <option value="Road Blocked">⛔ Road Blocked (Corridor Impassable)</option>
+              <option value="Pothole">Pothole</option>
+              <option value="Road crack">Road crack</option>
+              <option value="Waterlogging">Waterlogging</option>
+              <option value="Accident">Accident</option>
+              <option value="Barricade">Barricade</option>
+              <option value="Other">Other</option>
+            </select></label><label>SEVERITY<select id="hazardSeverity">
+              <option>Low</option>
+              <option selected>Medium</option>
+              <option>High</option>
+              <option>Critical</option>
+            </select></label>
+          <div class="form-grid"><label>LATITUDE<input id="hazardLat" type="number" step="any"
+                placeholder="11.0168"></label><label>LONGITUDE<input id="hazardLng" type="number" step="any"
+                placeholder="76.9558"></label></div>
+          <div class="button-row"><button class="secondary-button" id="cancelReportBtn">Cancel</button><button
+              class="primary-button small" id="submitHazardBtn">Submit report</button></div>
+        </div>
+        <div class="sidebar-footer"><span class="mini-shield">◇</span>
+          <div><b>Autonomous Safety AI</b><small>Continuous perception evaluation with dynamic multi-corridor
+              rerouting.</small></div>
+        </div>
+      </aside>
+      <section class="map-area">
+        <div class="map-toolbar">
+          <div><span class="eyebrow">LEAFLET NAVIGATION COCKPIT</span>
+            <div class="map-title">Route intelligence <span class="map-live-pill"><i></i> LEAFLET ONLINE</span></div>
+          </div>
+          <div class="map-controls">
+            <button id="trafficBtn" class="control-button">▤ Congestion layer</button>
+            <button id="followBtn" class="control-button">◎ Follow vehicle</button>
+            <button id="demoBtn" class="control-button">▶ Demo drive</button>
+          </div>
+        </div>
+
+        <!-- Interactive Entity Insertion Toolbar for Leaflet Map -->
+        <div class="map-entity-toolbar" id="entityToolbar">
+          <div class="entity-toolbar-label">
+            <span class="toolbar-dot"></span>
+            <b>INSERT ON MAP:</b>
+          </div>
+          <div class="entity-tool-group">
+            <button type="button" class="entity-tool-btn" id="toolObstacle" data-type="Obstacle"
+              title="Insert road obstacle (pothole, fallen tree, road debris)">
+              <span class="tool-icon">⚠️</span>
+              <span class="tool-label">Obstacle</span>
+            </button>
+            <button type="button" class="entity-tool-btn" id="toolPedestrian" data-type="Pedestrian Moving"
+              title="Insert moving pedestrian (animated crosswalk / walking pedestrian)">
+              <span class="tool-icon">🚶</span>
+              <span class="tool-label">Pedestrian Moving</span>
+            </button>
+            <button type="button" class="entity-tool-btn" id="toolConstruction" data-type="Construction Working"
+              title="Insert active construction work zone with caution perimeter">
+              <span class="tool-icon">🚧</span>
+              <span class="tool-label">Construction</span>
+            </button>
+            <button type="button" class="entity-tool-btn" id="toolRoadBlocked" data-type="Road Blocked"
+              title="Insert road blockage (forces instant corridor rerouting)">
+              <span class="tool-icon">⛔</span>
+              <span class="tool-label">Road Blocked</span>
+            </button>
+          </div>
+          <div class="entity-actions-group">
+            <button type="button" class="entity-action-btn highlight" id="quickAddOnRouteBtn"
+              title="Automatically drop selected item onto active route for instant detection">
+              <span>⚡</span> Quick Add on Route
+            </button>
+            <div class="scenarios-menu-wrap">
+              <button type="button" class="entity-action-btn" id="demoScenariosBtn"
+                title="Pre-configured review demonstration scenarios">
+                <span>🎬</span> Review Scenarios ▾
+              </button>
+              <div class="scenarios-dropdown" id="scenariosDropdown" hidden>
+                <div class="dropdown-header">PROJECT REVIEW PRESETS</div>
+                <button type="button" class="scenario-item" data-scenario="pedestrian">
+                  <span class="scen-icon">🚶</span>
+                  <div><b>Pedestrian Crossing Ahead</b><small>Spawns moving pedestrian crossing current vehicle
+                      path</small></div>
+                </button>
+                <button type="button" class="scenario-item" data-scenario="construction">
+                  <span class="scen-icon">🚧</span>
+                  <div><b>Work Zone Ahead (20 km/h)</b><small>Places active construction & speed caution
+                      perimeter</small></div>
+                </button>
+                <button type="button" class="scenario-item" data-scenario="blockage">
+                  <span class="scen-icon">⛔</span>
+                  <div><b>Corridor Blockage & Auto-Reroute</b><small>Blocks main highway & demonstrates instant bypass
+                      switch</small></div>
+                </button>
+                <button type="button" class="scenario-item" data-scenario="combo">
+                  <span class="scen-icon">🚨</span>
+                  <div><b>Full Urban Perception Stack</b><small>Deploys obstacle + moving pedestrian + work zone</small>
+                  </div>
+                </button>
+              </div>
+            </div>
+            <button type="button" class="entity-action-btn danger" id="clearAllHazardsBtn"
+              title="Remove all placed entities from the map">
+              <span>🗑️</span> Clear All
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Reroute Alert Banner -->
+        <div class="dynamic-reroute-banner" id="dynamicRerouteBanner" hidden>
+          <div class="reroute-banner-left">
+            <span class="reroute-pulse-dot"></span>
+            <span class="reroute-banner-icon">🔄</span>
+            <div class="reroute-banner-text">
+              <b id="rerouteBannerTitle">DYNAMIC REROUTE ACTIVE</b>
+              <span id="rerouteBannerSubtitle">Vehicle corridor altered: Detouring around road obstacle</span>
+            </div>
+          </div>
+          <div class="reroute-banner-badge" id="rerouteBannerBadge">SAFE BYPASS</div>
+        </div>
+
+        <!-- Placement Mode Indicator Banner -->
+        <div class="map-placement-banner" id="mapPlacementBanner" hidden>
+          <div class="banner-body">
+            <span class="banner-crosshair">🎯</span>
+            <span id="placementBannerText">Click anywhere on the map to place Obstacle</span>
+          </div>
+          <button type="button" id="cancelPlacementBtn" class="banner-cancel-btn">✕ Cancel (Esc)</button>
+        </div>
+
+        <div id="map"></div>
+        <div class="map-legend">
+          <span><i class="legend-line active"></i> Selected Route</span>
+          <span><i class="legend-line alt"></i> Safe Alternative</span>
+          <span><i class="legend-badge obstacle">⚠️</i> Obstacle</span>
+          <span><i class="legend-badge pedestrian">🚶</i> Moving Pedestrian</span>
+          <span><i class="legend-badge construction">🚧</i> Construction</span>
+          <span><i class="legend-badge blocked">⛔</i> Road Blocked</span>
+          <span id="mapDataBadge">ENGINE: LEAFLET (OPENSTREETMAP / CARTO)</span>
+        </div>
+        <div class="map-bottom-cards">
+          <div class="metric-card"><span class="metric-label">ESTIMATED ARRIVAL</span><strong
+              id="etaMetric">—</strong><small id="etaSub">Calculate a route</small></div>
+          <div class="metric-card"><span class="metric-label">DISTANCE</span><strong
+              id="distanceMetric">—</strong><small>Selected route</small></div>
+          <div class="metric-card"><span class="metric-label">VEHICLE SOURCE</span><strong
+              id="vehicleSource">DEMO</strong><small id="vehicleStatus">Not tracking</small></div>
+          <div class="metric-card risk-card"><span class="metric-label">ROUTE RISK</span><strong
+              id="riskMetric">UNKNOWN</strong><small id="riskSub">No route assessed</small></div>
+        </div>
+      </section>
+      <aside class="right-rail">
+        <div class="rail-heading"><span class="eyebrow">VEHICLE TELEMETRY</span><span class="live-chip"><i></i> <span
+              id="telemetryType">DEMO</span></span></div>
+        <div class="vehicle-card">
+          <div class="vehicle-top">
+            <div><small>VEHICLE STATUS</small>
+              <h3 id="vehicleHealth">STANDBY</h3>
+            </div>
+            <div class="vehicle-icon">▰</div>
+          </div>
+          <div class="speed-readout"><strong id="speedVal">0</strong><span>km/h</span>
+            <div class="speed-gauge">
+              <div id="speedGauge"></div>
+            </div>
+          </div>
+          <div class="telemetry-grid">
+            <div><span>HEADING</span><b id="headingVal">—</b></div>
+            <div><span>BATTERY</span><b id="batteryVal">—</b></div>
+            <div><span>VIBRATION</span><b id="vibrationVal">—</b></div>
+            <div><span>LAST UPDATE</span><b id="updateVal">—</b></div>
+          </div>
+          <div class="vehicle-buttons"><button class="secondary-button" id="trackBtn">Start GPS</button><button
+              class="secondary-button" id="stopTrackBtn">Stop</button></div>
+          <div class="source-note" id="sourceNote">Browser GPS requires permission. Hardware data is optional.</div>
+        </div>
+        <div class="section-heading compact rail-section">
+          <div><span class="eyebrow">SENSOR STATUS</span>
+            <h2>Perception stack</h2>
+          </div><span class="demo-label">SIMULATED</span>
+        </div>
+        <div class="sensor-list">
+          <div class="sensor-row"><span class="sensor-symbol">◉</span>
+            <div><b>Camera</b><small>Virtual object classification</small></div><span class="sensor-state">DEMO</span>
+          </div>
+          <div class="sensor-row"><span class="sensor-symbol">⌁</span>
+            <div><b>LiDAR</b><small>Virtual range scan</small></div><span class="sensor-state">DEMO</span>
+          </div>
+          <div class="sensor-row"><span class="sensor-symbol">⌖</span>
+            <div><b>Radar</b><small>Virtual motion tracking</small></div><span class="sensor-state">DEMO</span>
+          </div>
+        </div>
+        <div class="section-heading compact rail-section">
+          <div><span class="eyebrow">SYSTEM ACTIVITY</span>
+            <h2>Event timeline</h2>
+          </div><button class="text-button" id="clearEventsBtn">Clear</button>
+        </div>
+        <div id="eventLog" class="event-log">
+          <div class="event"><span class="event-dot green"></span>
+            <div><b>System initialized</b><small>RoadGuard AI console ready.</small><time>Just now</time></div>
+          </div>
+        </div>
+        <div class="rail-footer"><span class="footer-indicator"></span>
+          <div><b id="apiStatus">ROUTING PROVIDER READY</b><small id="apiStatusSub">Google Maps activates when
+              configured.</small></div>
+        </div>
+      </aside>
+    </main>
+    </div> <!-- /#view-cockpit -->
+
+    <!-- 2. AI PERCEPTION & MULTI-CAMERA RIG VIEW -->
+    <div class="tab-view" id="view-perception" hidden>
+      <div class="research-container">
+        <div class="research-header-row">
+          <div>
+            <span class="eyebrow">COMPUTER VISION & PERCEPTION PIPELINE</span>
+            <h2>Multi-Camera Rig & Obstacle Detection Console</h2>
+            <p class="research-subtitle">Real pretrained YOLOv8 model inference with Indian road obstacle taxonomy, multi-object tracking, and motion prediction.</p>
+          </div>
+          <div class="header-action-group">
+            <span class="badge-pill badge-live" id="modelStatusBadge">ENGINE: INITIALIZING...</span>
+            <label class="action-btn-pill upload-label" title="Upload on-road MP4/AVI for inference">
+              <span>📹 Upload On-Road Video</span>
+              <input type="file" id="videoUploadInput" accept="video/mp4,video/avi,video/mov,video/mkv" hidden>
+            </label>
+            <button type="button" class="action-btn-pill" id="testDetectionBtn">⚡ Test Frame Detection</button>
+            <button type="button" class="action-btn-pill secondary" id="clearAnalysisBtn">⟲ Clear</button>
+          </div>
+        </div>
+
+        <div id="uploadProgressStatus" class="upload-progress-banner" style="display:none;"></div>
+
+        <!-- Camera Rig Grid -->
+        <div class="camera-rig-grid">
+          <!-- Main Front Camera -->
+          <div class="camera-feed-card main-front">
+            <div class="feed-header">
+              <span class="feed-source-tag live">CAMERA 01 (FRONT) — PRIMARY SENSOR</span>
+              <span class="feed-badge live">ACTIVE AI INFERENCE</span>
+            </div>
+            <div class="feed-viewport">
+              <img id="frontCamImage" class="feed-stream-img" alt="Front Camera Feed" hidden>
+              <div id="frontCamPlaceholder" class="feed-placeholder">
+                <div class="placeholder-icon">📷</div>
+                <div class="placeholder-text">Front Autonomous Camera Standby</div>
+                <small>Click "Test Frame Detection" or upload an MP4 video to run real YOLO inference.</small>
+              </div>
+            </div>
+            <div class="feed-footer">
+              <span>FOV: 120° Wide-Angle HD</span>
+              <span>Input: 640x640 Tensor</span>
+              <span>Corridor: Ego Lane & Margin</span>
+            </div>
+          </div>
+
+          <!-- Peripheral / Simulated Cameras -->
+          <div class="peripheral-cameras-column">
+            <div class="camera-feed-card peripheral">
+              <div class="feed-header">
+                <span class="feed-source-tag simulated">CAMERA 02 (REAR)</span>
+                <span class="feed-badge simulated">SIMULATED CAMERA</span>
+              </div>
+              <div class="feed-viewport small">
+                <div class="feed-placeholder">
+                  <div class="placeholder-icon">🚘</div>
+                  <div class="placeholder-text">Rear Corridor View</div>
+                  <small>Tracking approaching high-speed vehicles</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="camera-feed-card peripheral">
+              <div class="feed-header">
+                <span class="feed-source-tag simulated">CAMERA 03 (LEFT BLIND-SPOT)</span>
+                <span class="feed-badge simulated">SIMULATED CAMERA</span>
+              </div>
+              <div class="feed-viewport small">
+                <div class="feed-placeholder">
+                  <div class="placeholder-icon">🛵</div>
+                  <div class="placeholder-text">Left Flank View</div>
+                  <small>Informal two-wheeler filtering & merging</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="camera-feed-card peripheral">
+              <div class="feed-header">
+                <span class="feed-source-tag simulated">CAMERA 04 (RIGHT CURB / SHOULDER)</span>
+                <span class="feed-badge simulated">SIMULATED CAMERA</span>
+              </div>
+              <div class="feed-viewport small">
+                <div class="feed-placeholder">
+                  <div class="placeholder-icon">🐕</div>
+                  <div class="placeholder-text">Right Shoulder View</div>
+                  <small>Pedestrians, cattle & unpaved shoulder</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry & Performance Row -->
+        <div class="metrics-grid four-col">
+          <div class="metric-card">
+            <span class="metric-label">PERCEPTION INFERENCE TIME</span>
+            <span class="metric-val" id="infTimeMetric">-- ms</span>
+            <small class="metric-hint">Measured tensor forward pass latency</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">PATH PLANNING TIME</span>
+            <span class="metric-val" id="planTimeMetric">-- ms</span>
+            <small class="metric-hint">Quintic polynomial candidate solver</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">ACTIVE OBJECT TRACKER</span>
+            <span class="metric-val" style="font-size:16px;">ByteTrack (IoU + Centroid)</span>
+            <small class="metric-hint">Maintains object ID across frames</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">MOTION PREDICTION HORIZON</span>
+            <span class="metric-val" style="font-size:16px;">5 Steps (dt = 0.2s)</span>
+            <small class="metric-hint">Linear temporal velocity extrapolation</small>
+          </div>
+        </div>
+
+        <!-- Real-Time Collision Risk Status Banner -->
+        <div class="risk-status-banner normal" id="riskStatusBanner">
+          <div class="risk-banner-main">
+            <div class="risk-banner-icon">🛡️</div>
+            <div>
+              <h3 id="riskDecisionTitle">DECISION STATE: NORMAL</h3>
+              <p id="riskDecisionSubtitle">Perception standby. System monitoring sensors and safe roadway margins.</p>
+            </div>
+          </div>
+          <div class="risk-banner-metrics">
+            <div class="risk-chip">
+              <span class="risk-chip-label">TARGET SPEED</span>
+              <span class="risk-chip-val" id="riskTargetSpeed">35.0 km/h</span>
+            </div>
+            <div class="risk-chip">
+              <span class="risk-chip-label">MIN TTC</span>
+              <span class="risk-chip-val" id="riskMinTTC">SAFE</span>
+            </div>
+            <div class="risk-chip">
+              <span class="risk-chip-label">MIN DISTANCE</span>
+              <span class="risk-chip-val" id="riskMinDist">CLEAR</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tracked Objects Table -->
+        <div class="research-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">TEMPORAL SCENE ANALYSIS</span>
+              <h3>Active Tracked Obstacles & Motion Trajectories</h3>
+            </div>
+            <span class="badge-pill badge-live">REAL-TIME MULTI-OBJECT TRACKING</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Track ID</th>
+                  <th>Class Label</th>
+                  <th>Confidence</th>
+                  <th>Corridor Centroid</th>
+                  <th>Observed Velocity</th>
+                  <th>Motion Prediction (Short-Term Future)</th>
+                </tr>
+              </thead>
+              <tbody id="detectedObjectsTbody">
+                <tr>
+                  <td colspan="6" style="text-align:center;color:#6b8274;">
+                    Perception standby. Click 'Test Frame Detection' or upload a video.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Indian Road Obstacle Taxonomy Legend -->
+        <div class="research-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">TAXONOMY CONFIGURATION</span>
+              <h3>Indian Road Obstacle Classes & Safety Envelopes</h3>
+            </div>
+          </div>
+          <div class="taxonomy-grid">
+            <div class="taxonomy-chip">
+              <span class="taxonomy-icon">🚗</span>
+              <div>
+                <b>Vehicle (Car/Bus/Truck)</b>
+                <small>Safety Margin: 3.5m | Speed: Dynamic</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="taxonomy-icon">🛵</span>
+              <div>
+                <b>Motorcycle / Bicycle</b>
+                <small>Safety Margin: 2.5m | Speed: Agile filtering</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="taxonomy-icon">🚶</span>
+              <div>
+                <b>Pedestrian</b>
+                <small>Safety Margin: 4.0m | Speed: 1.2 m/s</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="taxonomy-icon">🐂</span>
+              <div>
+                <b>Dog / Cattle</b>
+                <small>Safety Margin: 5.0m | High Uncertainty</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="taxonomy-icon">🕳️</span>
+              <div>
+                <b>Pothole / Road Damage</b>
+                <small>Safety Margin: 1.5m | Lateral Evasion</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="taxonomy-icon">🚧</span>
+              <div>
+                <b>Construction / Barrier</b>
+                <small>Safety Margin: 3.0m | Re-plan Route</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. MATHWORKS SIMULINK BICYCLE MODEL CO-SIMULATION VIEW -->
+    <div class="tab-view" id="view-simulink" hidden>
+      <div class="research-container">
+        <div class="research-header-row">
+          <div>
+            <span class="eyebrow">MATHWORKS SIMULINK & VEHICLE DYNAMICS</span>
+            <h2>3-DOF Non-Linear Bicycle Model & Stateflow FSM</h2>
+            <p class="research-subtitle">Suggested MathWorks Tools: Automated Driving Toolbox, Vehicle Dynamics Blockset, Navigation Toolbox, Stateflow.</p>
+          </div>
+          <div class="header-action-group">
+            <span class="badge-pill badge-live">MATLAB/SIMULINK BRIDGE: READY</span>
+            <a href="/api/autonomous/simulink/export-matlab" download="simulink_bridge.m" class="action-btn-pill">📥 Export .M Bridge Script</a>
+          </div>
+        </div>
+
+        <!-- Simulink Interactive Block Diagram -->
+        <div class="research-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">SIMULINK ARCHITECTURE BLOCKSET</span>
+              <h3>Hierarchical Control Architecture (Perception ➔ Stateflow ➔ Bicycle Model)</h3>
+            </div>
+            <span class="badge-pill badge-live" id="simulinkStateflowMode">FSM: LANE_FOLLOWING</span>
+          </div>
+          <div class="simulink-svg-container">
+            <svg viewBox="0 0 950 220" class="simulink-diagram" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="simBlockGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#14261d"/>
+                  <stop offset="100%" stop-color="#0a1711"/>
+                </linearGradient>
+                <linearGradient id="simStateflowGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#1b3829"/>
+                  <stop offset="100%" stop-color="#0d2419"/>
+                </linearGradient>
+                <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 8 5 L 0 9 z" fill="#00e59b"/>
+                </marker>
+              </defs>
+
+              <!-- Block 1: Sensors / Perception -->
+              <rect x="20" y="40" width="160" height="130" rx="8" fill="url(#simBlockGrad)" stroke="#00e59b" stroke-width="2"/>
+              <text x="100" y="70" fill="#00e59b" font-size="12" font-family="Manrope" font-weight="700" text-anchor="middle">PERCEPTION BLOCK</text>
+              <text x="100" y="95" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">YOLOv8 + ByteTrack</text>
+              <text x="100" y="115" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">Obstacle Centroids (x,y)</text>
+              <text x="100" y="135" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">Relative Velocity (vx,vy)</text>
+
+              <!-- Connector 1 -->
+              <path d="M 180 105 L 240 105" stroke="#00e59b" stroke-width="2" marker-end="url(#arrow)"/>
+              <text x="210" y="98" fill="#587263" font-size="9" text-anchor="middle">Detections</text>
+
+              <!-- Block 2: Trajectory Planning -->
+              <rect x="240" y="40" width="180" height="130" rx="8" fill="url(#simBlockGrad)" stroke="#264434" stroke-width="2"/>
+              <text x="330" y="70" fill="#ffffff" font-size="12" font-family="Manrope" font-weight="700" text-anchor="middle">LATTICE PLANNER</text>
+              <text x="330" y="95" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">Navigation Toolbox</text>
+              <text x="330" y="115" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">Quintic Polynomial Path</text>
+              <text x="330" y="135" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">Jerk & Clearance Cost</text>
+
+              <!-- Connector 2 -->
+              <path d="M 420 105 L 480 105" stroke="#00e59b" stroke-width="2" marker-end="url(#arrow)"/>
+              <text x="450" y="98" fill="#587263" font-size="9" text-anchor="middle">Candidate</text>
+
+              <!-- Block 3: Stateflow FSM Supervisor -->
+              <rect x="480" y="30" width="200" height="150" rx="8" fill="url(#simStateflowGrad)" stroke="#00e59b" stroke-width="2"/>
+              <text x="580" y="58" fill="#00e59b" font-size="12" font-family="Manrope" font-weight="700" text-anchor="middle">STATEFLOW FSM</text>
+              <rect x="500" y="72" width="160" height="28" rx="4" fill="#08140e" stroke="#264434"/>
+              <text x="580" y="90" fill="#00e59b" font-size="10" font-weight="600" text-anchor="middle">LANE_FOLLOWING</text>
+              <rect x="500" y="106" width="160" height="28" rx="4" fill="#08140e" stroke="#264434"/>
+              <text x="580" y="124" fill="#ffb84d" font-size="10" font-weight="600" text-anchor="middle">LATERAL_EVASIVE</text>
+              <rect x="500" y="140" width="160" height="28" rx="4" fill="#08140e" stroke="#264434"/>
+              <text x="580" y="158" fill="#ff4d4d" font-size="10" font-weight="600" text-anchor="middle">SAFE_STOP_EMERGENCY</text>
+
+              <!-- Connector 3 -->
+              <path d="M 680 105 L 740 105" stroke="#00e59b" stroke-width="2" marker-end="url(#arrow)"/>
+              <text x="710" y="98" fill="#587263" font-size="9" text-anchor="middle">δ_f, a_x</text>
+
+              <!-- Block 4: Vehicle Dynamics Blockset -->
+              <rect x="740" y="40" width="190" height="130" rx="8" fill="url(#simBlockGrad)" stroke="#264434" stroke-width="2"/>
+              <text x="835" y="70" fill="#ffffff" font-size="12" font-family="Manrope" font-weight="700" text-anchor="middle">3-DOF BICYCLE MODEL</text>
+              <text x="835" y="95" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">Vehicle Dynamics Blockset</text>
+              <text x="835" y="115" fill="#8fa598" font-size="10" font-family="Manrope" text-anchor="middle">m=1500kg, L=2.7m</text>
+              <text x="835" y="135" fill="#00e59b" font-size="10" font-family="Manrope" text-anchor="middle">State: [x, y, ψ, vx, r, β]</text>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Telemetry & Live Solver Controls -->
+        <div class="simulink-grid">
+          <!-- Parameter Tuning & Control Panel -->
+          <div class="research-card">
+            <div class="card-header">
+              <div>
+                <span class="eyebrow">MATHWORKS PARAMETER INJECTION</span>
+                <h3>Vehicle Dynamics Tuning Sliders</h3>
+              </div>
+            </div>
+            <div class="slider-control-group">
+              <div class="slider-item">
+                <div class="slider-header">
+                  <span>Vehicle Mass (m)</span>
+                  <b id="paramMassVal">1500 kg</b>
+                </div>
+                <input type="range" id="sliderMass" min="1000" max="2500" step="50" value="1500">
+              </div>
+
+              <div class="slider-item">
+                <div class="slider-header">
+                  <span>Wheelbase Length (L)</span>
+                  <b id="paramWheelbaseVal">2.7 m</b>
+                </div>
+                <input type="range" id="sliderWheelbase" min="2.0" max="3.5" step="0.1" value="2.7">
+              </div>
+
+              <div class="input-inline-grid">
+                <label>
+                  <span>Steer Input Angle (δ_f °)</span>
+                  <input type="number" id="simSteerInput" min="-35" max="35" step="1" value="0.0">
+                </label>
+                <label>
+                  <span>Target Velocity (m/s)</span>
+                  <input type="number" id="simSpeedInput" min="0" max="40" step="1" value="10.0">
+                </label>
+              </div>
+
+              <div class="sim-actions-row">
+                <button type="button" class="action-btn-pill" id="simulinkStepBtn">⏱ Run 1 Step (dt=0.05s)</button>
+                <button type="button" class="action-btn-pill secondary" id="simulinkRunLoopBtn">▶ Run Continuous Co-Simulation</button>
+                <button type="button" class="action-btn-pill secondary" id="simulinkResetBtn">⟲ Reset State</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-Time Solver Telemetry -->
+          <div class="research-card">
+            <div class="card-header">
+              <div>
+                <span class="eyebrow">NUMERICAL INTEGRATION</span>
+                <h3>Simulink Dynamic Telemetry</h3>
+              </div>
+              <span class="badge-pill badge-live">RK4 SOLVER ACTIVE</span>
+            </div>
+            <div class="metrics-grid two-col">
+              <div class="metric-card">
+                <span class="metric-label">LONGITUDINAL VELOCITY (Vx)</span>
+                <span class="metric-val" id="simMetricVx">36.0 km/h</span>
+                <small class="metric-hint">Vehicle forward velocity</small>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">LATERAL ACCELERATION (ay)</span>
+                <span class="metric-val" id="simMetricLatG">0.00 G</span>
+                <small class="metric-hint">Centrifugal lateral cornering load</small>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">YAW RATE (r)</span>
+                <span class="metric-val" id="simMetricYawRate">0.00 °/s</span>
+                <small class="metric-hint">Chassis angular rotation rate</small>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">SIDESLIP ANGLE (β)</span>
+                <span class="metric-val" id="simMetricSlip">0.00°</span>
+                <small class="metric-hint">Vehicle drift angle at CG</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. FIVE INDIAN ROAD SCENARIOS BENCH VIEW -->
+    <div class="tab-view" id="view-scenarios" hidden>
+      <div class="research-container">
+        <div class="research-header-row">
+          <div>
+            <span class="eyebrow">PS 06 SPECIFICATION EVALUATION</span>
+            <h2>5 Indian Road Autonomous Driving Scenarios</h2>
+            <p class="research-subtitle">Repeatable benchmark suite testing pedestrian crossings, informal two-wheel merges, potholes, cattle, and road blockages.</p>
+          </div>
+          <div class="header-action-group">
+            <button type="button" class="action-btn-pill" id="runScenarioBtn">▶ Run Scenario Benchmark</button>
+            <button type="button" class="action-btn-pill secondary" id="exportScenarioBtn">📥 Export JSON Results</button>
+          </div>
+        </div>
+
+        <!-- Scenarios Selection Grid -->
+        <div class="scenarios-grid" id="scenariosCardsGrid">
+          <!-- Populated dynamically via autonomous_dashboard.js -->
+        </div>
+
+        <!-- Selected Scenario Details & Live Benchmark Results -->
+        <div class="research-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">ACTIVE BENCHMARK RUNNER</span>
+              <h3 id="activeScenarioTitle">Scenario 1: Unmarked Village Road with Sudden Pedestrian</h3>
+              <p id="activeScenarioDesc" style="color:#8fa598;margin-top:4px;">Evaluates collision avoidance on unpaved roadway with no lane markings when a pedestrian abruptly enters the ego lane.</p>
+            </div>
+            <div class="header-tag-group">
+              <span class="badge-pill badge-simulated" id="activeScenarioMap">Town01</span>
+              <span class="badge-pill badge-live" id="scenarioVerdictBadge">STANDBY: READY TO RUN</span>
+            </div>
+          </div>
+
+          <div class="scenario-details-strip">
+            <div class="detail-item">
+              <span class="detail-label">EXECUTION ENGINE</span>
+              <b id="scenarioExecMode">Kinematic Benchmark Simulation</b>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">AVERAGE PLANNING LATENCY</span>
+              <b id="scenarioAvgLatency">-- ms</b>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">ASSET CONFIGURATION</span>
+              <b id="activeScenarioAssetNote">CARLA Built-in Walker</b>
+            </div>
+          </div>
+
+          <!-- Scenario Timeline Table -->
+          <div class="table-container" style="margin-top:16px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Ego Speed</th>
+                  <th>Risk Assessment</th>
+                  <th>Planner Decision</th>
+                  <th>Detected Obstacles</th>
+                  <th>Latency</th>
+                </tr>
+              </thead>
+              <tbody id="scenarioTimelineTbody">
+                <tr>
+                  <td colspan="6" style="text-align:center;color:#6b8274;">
+                    Click 'Run Scenario Benchmark' to execute deterministic evaluation.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. CARLA SIMULATION BRIDGE VIEW -->
+    <div class="tab-view" id="view-carla" hidden>
+      <div class="research-container">
+        <div class="research-header-row">
+          <div>
+            <span class="eyebrow">CARLA SIMULATOR CO-SIMULATION</span>
+            <h2>CARLA 0.9.x Integration Bridge</h2>
+            <p class="research-subtitle">Socket probe status, actor blueprints, asset requirements, and offline benchmark decoupling.</p>
+          </div>
+          <div class="header-action-group">
+            <span class="badge-pill badge-offline" id="carlaServerBadge">CARLA SERVER: OFFLINE / STANDBY</span>
+          </div>
+        </div>
+
+        <div class="grid-two-column">
+          <div class="research-card">
+            <div class="card-header">
+              <div>
+                <span class="eyebrow">ARCHITECTURE & ISOLATION</span>
+                <h3>Decoupled Co-Simulation Design</h3>
+              </div>
+            </div>
+            <p style="color:#8fa598;line-height:1.6;font-size:13px;">
+              Per research guidelines, the web dashboard operates seamlessly regardless of whether CARLA is running. If CARLA is unavailable, the application operates in <b>Kinematic Benchmark Mode</b> without crashing or blocking.
+            </p>
+            <div class="info-list" style="margin-top:14px;">
+              <div class="info-item">
+                <b>Heartbeat Target:</b> <code>127.0.0.1:2000 (RPC) / 2001 (Streaming)</code>
+              </div>
+              <div class="info-item">
+                <b>Client API:</b> <code>carla.Client</code> Python Wheel
+              </div>
+              <div class="info-item">
+                <b>Ego Vehicle Blueprint:</b> <code>vehicle.tesla.model3</code> with RGB Front Camera
+              </div>
+            </div>
+          </div>
+
+          <div class="research-card">
+            <div class="card-header">
+              <div>
+                <span class="eyebrow">INDIAN ROAD ASSET DOCUMENTATION</span>
+                <h3>Custom Asset Requirements</h3>
+              </div>
+            </div>
+            <p style="color:#8fa598;line-height:1.6;font-size:13px;">
+              Standard CARLA releases do <b>not</b> ship with Indian cattle meshes or procedural pothole geometries. For high-fidelity visual simulation:
+            </p>
+            <ul style="color:#8fa598;margin-left:18px;margin-top:8px;line-height:1.6;font-size:13px;">
+              <li><b>Cattle/Dogs:</b> Requires importing custom rigged FBX skeletal meshes into Unreal Engine / CARLA content library.</li>
+              <li><b>Potholes:</b> Requires decal projection or road mesh displacement mapping.</li>
+              <li><b>Current Prototype Behavior:</b> Benchmark scenarios proxy animal and pothole obstacle coordinates and bounding boxes realistically to test perception and planner response.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="research-card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">SETUP MANUAL</span>
+              <h3>CARLA Execution Instructions</h3>
+            </div>
+          </div>
+          <pre id="carlaInstructionsText" style="background:#09120e;padding:16px;border-radius:8px;color:#a3c2b0;font-family:monospace;font-size:12px;line-height:1.5;overflow-x:auto;">Checking CARLA server status...</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. DATASET & TRAINING STUDIO VIEW -->
+    <div class="tab-view" id="view-dataset" hidden>
+      <div class="research-container">
+        <div class="research-header-row">
+          <div>
+            <span class="eyebrow">CUSTOM MODEL TRAINING PIPELINE</span>
+            <h2>Indian Road Dataset & YOLO Training Studio</h2>
+            <p class="research-subtitle">Hardware acceleration telemetry, dataset annotation validator, and background model training.</p>
+          </div>
+          <div class="header-action-group">
+            <span class="badge-pill badge-live" id="dsCudaBadge">HARDWARE: CHECKING...</span>
+          </div>
+        </div>
+
+        <div class="metrics-grid four-col">
+          <div class="metric-card">
+            <span class="metric-label">DETECTED COMPUTE DEVICE</span>
+            <span class="metric-val" id="dsHardwareDevice" style="font-size:16px;">--</span>
+            <small class="metric-hint">PyTorch acceleration engine</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">TRAINING IMAGES</span>
+            <span class="metric-val" id="dsTrainImagesCount">--</span>
+            <small class="metric-hint">In dataset/images/train</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">VALIDATION IMAGES</span>
+            <span class="metric-val" id="dsValImagesCount">--</span>
+            <small class="metric-hint">In dataset/images/val</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">ANNOTATION INTEGRITY</span>
+            <span class="badge-pill badge-live" id="dsValidationStatusBadge" style="margin-top:6px;">VALIDATING</span>
+            <small class="metric-hint"><span id="dsAnnotationsCount">0</span> total bounding boxes</small>
+          </div>
+        </div>
+
+        <div class="grid-two-column" style="margin-top:20px;">
+          <div class="research-card">
+            <div class="card-header">
+              <div>
+                <span class="eyebrow">TRAINING HYPERPARAMETERS</span>
+                <h3>Trigger Background Training Job</h3>
+              </div>
+            </div>
+            <div class="slider-control-group">
+              <div class="input-inline-grid">
+                <label>
+                  <span>Epochs</span>
+                  <input type="number" id="trainEpochsInput" min="1" max="100" value="5">
+                </label>
+                <label>
+                  <span>Batch Size</span>
+                  <input type="number" id="trainBatchInput" min="1" max="64" value="8">
+                </label>
+              </div>
+              <button type="button" class="action-btn-pill" id="startTrainingBtn" style="width:100%;margin-top:14px;">
+                🚀 Start Model Training Job
+              </button>
+            </div>
+          </div>
+
+          <div class="research-card">
+            <div class="card-header">
+              <div>
+                <span class="eyebrow">JOB LOG OUTPUT</span>
+                <h3>Live Training Terminal</h3>
+              </div>
+            </div>
+            <pre id="trainingLogsTerminal" style="background:#09120e;padding:14px;border-radius:8px;color:#00e59b;font-family:monospace;font-size:11px;height:140px;overflow-y:auto;">System ready. Set epochs and click 'Start Model Training Job'.</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. SYSTEM VERIFICATION MATRIX VIEW -->
+    <div class="tab-view" id="view-verification" hidden>
+      <div class="research-container">
+        <div class="research-header-row">
+          <div>
+            <span class="eyebrow">RESEARCH INTEGRITY & AUDIT</span>
+            <h2>Prototype Verification Matrix</h2>
+            <p class="research-subtitle">Transparent feature audit distinguishing WORKING, SIMULATED, and NOT CONFIGURED modules.</p>
+          </div>
+        </div>
+
+        <div class="research-card">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">ACTIVE SUBSYSTEMS</span>
+              <h3 style="color:#00e59b;">1. Working Features (Genuinely Implemented & Tested)</h3>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Subsystem / Feature</th>
+                  <th>Implementation Details</th>
+                  <th>Audit Status</th>
+                </tr>
+              </thead>
+              <tbody id="matrixWorkingTbody">
+                <tr><td colspan="3">Loading verification matrix...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="research-card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">SIMULATION CO-PROCESSORS</span>
+              <h3 style="color:#ffb84d;">2. Simulated Features (Modelled Co-Processors & Envelopes)</h3>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Subsystem / Feature</th>
+                  <th>Implementation Details</th>
+                  <th>Audit Status</th>
+                </tr>
+              </thead>
+              <tbody id="matrixSimulatedTbody">
+                <tr><td colspan="3">Loading verification matrix...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="research-card" style="margin-top:20px;">
+          <div class="card-header">
+            <div>
+              <span class="eyebrow">EXTERNAL DEPENDENCIES</span>
+              <h3 style="color:#8fa598;">3. Not Configured (External Hardware / Cloud Service Dependent)</h3>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Subsystem / Feature</th>
+                  <th>Implementation Details</th>
+                  <th>Audit Status</th>
+                </tr>
+              </thead>
+              <tbody id="matrixNotConfiguredTbody">
+                <tr><td colspan="3">Loading verification matrix...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    <div class="modal-backdrop" id="rerouteModal" hidden>
+      <div class="modal">
+        <div class="modal-icon">↗</div><span class="eyebrow">SAFER ALTERNATIVE AVAILABLE</span>
+        <h2>Review route change</h2>
+        <p id="rerouteMessage">A reported hazard may affect the selected route.</p>
+        <div class="modal-actions"><button class="secondary-button" id="rejectRerouteBtn">Keep current
+            route</button><button class="primary-button" id="acceptRerouteBtn">Use alternative route</button></div>
+      </div>
     </div>
   </div>
-  <div class="reroute-banner-badge" id="rerouteBannerBadge">SAFE BYPASS</div>
-</div>
+  <script>window.ROADGUARD_CONFIG = { browserKey: {{ (config.get('GOOGLE_MAPS_BROWSER_KEY', '') or '')| tojson }}};</script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='autonomous_dashboard.js') }}"></script>
+</body>
 
-<!-- Placement Mode Indicator Banner -->
-<div class="map-placement-banner" id="mapPlacementBanner" hidden>
-<div class="banner-body">
-<span class="banner-crosshair">🎯</span>
-<span id="placementBannerText">Click anywhere on the map to place Obstacle</span>
-</div>
-<button type="button" id="cancelPlacementBtn" class="banner-cancel-btn">✕ Cancel (Esc)</button>
-</div>
-
-<div id="map"></div>
-<div class="map-legend">
-<span><i class="legend-line active"></i> Selected Route</span>
-<span><i class="legend-line alt"></i> Safe Alternative</span>
-<span><i class="legend-badge obstacle">⚠️</i> Obstacle</span>
-<span><i class="legend-badge pedestrian">🚶</i> Moving Pedestrian</span>
-<span><i class="legend-badge construction">🚧</i> Construction</span>
-<span><i class="legend-badge blocked">⛔</i> Road Blocked</span>
-<span id="mapDataBadge">ENGINE: LEAFLET (OPENSTREETMAP / CARTO)</span>
-</div>
-<div class="map-bottom-cards"><div class="metric-card"><span class="metric-label">ESTIMATED ARRIVAL</span><strong id="etaMetric">—</strong><small id="etaSub">Calculate a route</small></div><div class="metric-card"><span class="metric-label">DISTANCE</span><strong id="distanceMetric">—</strong><small>Selected route</small></div><div class="metric-card"><span class="metric-label">VEHICLE SOURCE</span><strong id="vehicleSource">DEMO</strong><small id="vehicleStatus">Not tracking</small></div><div class="metric-card risk-card"><span class="metric-label">ROUTE RISK</span><strong id="riskMetric">UNKNOWN</strong><small id="riskSub">No route assessed</small></div></div></section>
-<aside class="right-rail"><div class="rail-heading"><span class="eyebrow">VEHICLE TELEMETRY</span><span class="live-chip"><i></i> <span id="telemetryType">DEMO</span></span></div><div class="vehicle-card"><div class="vehicle-top"><div><small>VEHICLE STATUS</small><h3 id="vehicleHealth">STANDBY</h3></div><div class="vehicle-icon">▰</div></div><div class="speed-readout"><strong id="speedVal">0</strong><span>km/h</span><div class="speed-gauge"><div id="speedGauge"></div></div></div><div class="telemetry-grid"><div><span>HEADING</span><b id="headingVal">—</b></div><div><span>BATTERY</span><b id="batteryVal">—</b></div><div><span>VIBRATION</span><b id="vibrationVal">—</b></div><div><span>LAST UPDATE</span><b id="updateVal">—</b></div></div><div class="vehicle-buttons"><button class="secondary-button" id="trackBtn">Start GPS</button><button class="secondary-button" id="stopTrackBtn">Stop</button></div><div class="source-note" id="sourceNote">Browser GPS requires permission. Hardware data is optional.</div></div>
-<div class="section-heading compact rail-section"><div><span class="eyebrow">SENSOR STATUS</span><h2>Perception stack</h2></div><span class="demo-label">SIMULATED</span></div><div class="sensor-list"><div class="sensor-row"><span class="sensor-symbol">◉</span><div><b>Camera</b><small>Virtual object classification</small></div><span class="sensor-state">DEMO</span></div><div class="sensor-row"><span class="sensor-symbol">⌁</span><div><b>LiDAR</b><small>Virtual range scan</small></div><span class="sensor-state">DEMO</span></div><div class="sensor-row"><span class="sensor-symbol">⌖</span><div><b>Radar</b><small>Virtual motion tracking</small></div><span class="sensor-state">DEMO</span></div></div>
-<div class="section-heading compact rail-section"><div><span class="eyebrow">SYSTEM ACTIVITY</span><h2>Event timeline</h2></div><button class="text-button" id="clearEventsBtn">Clear</button></div><div id="eventLog" class="event-log"><div class="event"><span class="event-dot green"></span><div><b>System initialized</b><small>RoadGuard AI console ready.</small><time>Just now</time></div></div></div>
-<div class="rail-footer"><span class="footer-indicator"></span><div><b id="apiStatus">ROUTING PROVIDER READY</b><small id="apiStatusSub">Google Maps activates when configured.</small></div></div></aside>
-</main>
-<div class="toast" id="toast" role="status"></div><div class="modal-backdrop" id="rerouteModal" hidden><div class="modal"><div class="modal-icon">↗</div><span class="eyebrow">SAFER ALTERNATIVE AVAILABLE</span><h2>Review route change</h2><p id="rerouteMessage">A reported hazard may affect the selected route.</p><div class="modal-actions"><button class="secondary-button" id="rejectRerouteBtn">Keep current route</button><button class="primary-button" id="acceptRerouteBtn">Use alternative route</button></div></div></div>
-</div>
-<script>window.ROADGUARD_CONFIG={browserKey:{{ (config.get('GOOGLE_MAPS_BROWSER_KEY','') or '')|tojson }}};</script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
-</body></html>
+</html>

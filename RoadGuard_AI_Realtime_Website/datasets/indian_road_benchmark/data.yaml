@@ -1,0 +1,10 @@
+names:
+  0: Vehicle
+  1: Motorcycle/bicycle
+  2: Pedestrian
+  3: Dog/cattle
+  4: Pothole
+  5: Construction barrier/road blockage
+path: C:\Users\venkat\Downloads\RoadGuard_AI_Realtime_Website (1)\RoadGuard_AI_Realtime_Website\datasets\indian_road_benchmark
+train: images/train
+val: images/val

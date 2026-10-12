@@ -18,10 +18,14 @@ from services.routing_service import calculate_routes
 from services.telemetry_service import telemetry_service
 from services.serial_service import serial_service
 from services.alert_service import alert_service
+from services.autonomous_routes import autonomous_bp
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "irie_dev_secret_key_8f7b3c2e1d0a5f4e")
 app.config["GOOGLE_MAPS_BROWSER_KEY"] = os.environ.get("GOOGLE_MAPS_BROWSER_KEY", "")
+
+# Register Autonomous Driving Research Blueprint
+app.register_blueprint(autonomous_bp)
 
 # Initialize SQLite database and seed demo account on startup
 init_db()
@@ -494,11 +498,11 @@ def api_hazards_post():
         "speed_kmh": float(data.get("speed_kmh", 4.5 if kind == "Pedestrian Moving" else 0.0)),
         "heading": float(data.get("heading", 90.0)),
         "radius_m": float(data.get("radius_m", 120.0 if kind == "Construction Working" else (60.0 if kind == "Road Blocked" else 30.0))),
-        "source": data.get("source", "Map Interactive Placement"),
-        "verified": True,
-        "confidence": 0.96,
+        "source": data.get("source", "User Report"),
+        "verified": bool(data.get("verified", False)),
+        "confidence": float(data.get("confidence", 0.96 if data.get("verified") else 0.75)),
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "ACTIVE"
+        "status": "ACTIVE" if data.get("verified") else "UNVERIFIED"
     }
     app.config.setdefault("ROADGUARD_HAZARDS", []).insert(0, hazard)
     app.config["ROADGUARD_HAZARDS"] = app.config["ROADGUARD_HAZARDS"][:100]

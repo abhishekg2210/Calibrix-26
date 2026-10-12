@@ -1,0 +1,32 @@
+{
+  "system_name": "Adaptive Path Planning and Collision Avoidance - MathWorks Simulink Architecture",
+  "problem_statement": "PS 06 - Software: Autonomous Vehicles on Unstructured Indian Roads",
+  "toolboxes": {
+    "RoadRunner": "High-fidelity 3D modeling of unstructured Indian rural and urban road environments with missing lanes and irregular boundaries.",
+    "Automated Driving Toolbox": "Camera/Radar/LiDAR sensor fusion blocks, vision detection generator, and multi-object tracker.",
+    "Navigation Toolbox": "Lattice planner, Hybrid A* kinodynamic planning, Costmap2D obstacle representation.",
+    "Stateflow": "Supervisory finite state machine managing collision-avoidance transitions (NORMAL -> CAUTION -> EVASIVE -> SAFE_STOP).",
+    "Vehicle Dynamics Blockset": "Nonlinear 3-DOF & 14-DOF vehicle dynamics with Pacejka tire models and Bicycle Model kinematics.",
+    "Simulink Bicycle Model": "Bicycle model kinematics with steering-to-yaw-rate frequency response and lateral acceleration bounds."
+  },
+  "default_parameters": {
+    "vehicle_mass_kg": 1500.0,
+    "wheelbase_m": 2.7,
+    "distance_cg_front_axle_m": 1.2,
+    "distance_cg_rear_axle_m": 1.5,
+    "yaw_moment_of_inertia_kg_m2": 2500.0,
+    "front_tire_cornering_stiffness_n_per_rad": 80000.0,
+    "rear_tire_cornering_stiffness_n_per_rad": 80000.0,
+    "maximum_steering_angle_deg": 35.0,
+    "safe_lateral_acceleration_limit_g": 0.45
+  },
+  "state_variables": [
+    "x: Longitudinal global displacement (m)",
+    "y: Lateral global displacement (m)",
+    "yaw: Heading angle (rad)",
+    "vx: Longitudinal vehicle speed (m/s)",
+    "vy: Lateral vehicle velocity (m/s)",
+    "yaw_rate: Angular velocity around Z axis (rad/s)",
+    "steering_angle: Front wheel steer angle (deg)"
+  ]
+}

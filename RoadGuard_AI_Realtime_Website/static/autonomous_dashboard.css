@@ -1,0 +1,587 @@
+/* Autonomous Driving Research Prototype - Styling Extensions */
+
+.research-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #09110d;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #8fa598;
+  font: 11px Manrope, sans-serif;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.nav-tab:hover {
+  color: var(--text);
+  background: #101c16;
+}
+
+.nav-tab.active {
+  color: #032115;
+  background: var(--green);
+  box-shadow: 0 0 14px rgba(0, 229, 155, 0.3);
+  border-color: var(--green);
+}
+
+.tab-icon {
+  font-size: 13px;
+}
+
+/* Tab Views Container */
+.tab-view {
+  min-height: calc(100vh - 120px);
+  width: 100%;
+}
+
+.tab-view[hidden] {
+  display: none !important;
+}
+
+/* Single View Full Width Container */
+.research-container {
+  padding: 22px 26px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.research-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 22px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.research-title-group h2 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 4px 0;
+  color: var(--text);
+}
+
+.research-title-group p {
+  color: #809689;
+  font-size: 11px;
+  margin: 0;
+}
+
+.badge-pill {
+  font: 10px 'DM Mono', monospace;
+  padding: 4px 9px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.badge-live {
+  background: #09281a;
+  color: var(--green);
+  border: 1px solid #145537;
+}
+
+.badge-simulated {
+  background: #2b230f;
+  color: var(--amber);
+  border: 1px solid #584419;
+}
+
+.badge-offline {
+  background: #2b1114;
+  color: var(--red);
+  border: 1px solid #5c1e24;
+}
+
+/* Perception Multi-Camera Grid */
+.camera-grid-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.cam-card {
+  background: #0c1410;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cam-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #09100c;
+  border-bottom: 1px solid var(--line);
+  font: 10px 'DM Mono', monospace;
+  font-weight: 700;
+  color: #9cb0a4;
+}
+
+.cam-viewport-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #050806;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cam-viewport-wrap video,
+.cam-viewport-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.canvas-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cam-feed-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #556c5e;
+  font-size: 11px;
+}
+
+.cam-feed-placeholder span {
+  font-size: 28px;
+}
+
+.side-cameras-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.side-cam-card {
+  background: #0c1410;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.side-cam-card .cam-viewport-wrap {
+  aspect-ratio: 16 / 9;
+  height: 105px;
+}
+
+/* Video Controls Toolbar */
+.video-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #09110d;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.upload-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #112219;
+  border: 1px solid #1f4732;
+  color: #abf1cb;
+  border-radius: 7px;
+  padding: 8px 14px;
+  font: 11px Manrope, sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upload-file-btn:hover {
+  background: #153022;
+}
+
+/* Risk Status Banner */
+.risk-status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-radius: 10px;
+  background: #0c1712;
+  border: 1px solid #1d3326;
+  margin-bottom: 20px;
+}
+
+.risk-status-banner.normal {
+  border-color: #175338;
+  background: linear-gradient(90deg, #09261a, #0c1511);
+}
+
+.risk-status-banner.caution {
+  border-color: #634b17;
+  background: linear-gradient(90deg, #2b200b, #0c1511);
+}
+
+.risk-status-banner.high-risk {
+  border-color: #7a3a14;
+  background: linear-gradient(90deg, #381807, #0c1511);
+}
+
+.risk-status-banner.stop-required {
+  border-color: #7a1c22;
+  background: linear-gradient(90deg, #3d0d12, #0c1511);
+  animation: rg-border-pulse 1.4s infinite;
+}
+
+@keyframes rg-border-pulse {
+  0%, 100% { border-color: #ff5e66; box-shadow: 0 0 16px rgba(255, 94, 102, 0.2); }
+  50% { border-color: #7a1c22; box-shadow: none; }
+}
+
+.risk-indicator-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.risk-pulse-orb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 12px var(--green);
+}
+
+.risk-status-banner.caution .risk-pulse-orb {
+  background: var(--amber);
+  box-shadow: 0 0 12px var(--amber);
+}
+
+.risk-status-banner.high-risk .risk-pulse-orb,
+.risk-status-banner.stop-required .risk-pulse-orb {
+  background: var(--red);
+  box-shadow: 0 0 12px var(--red);
+}
+
+.risk-title-box b {
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  display: block;
+}
+
+.risk-title-box span {
+  font-size: 11px;
+  color: #92a89c;
+}
+
+.risk-metrics-strip {
+  display: flex;
+  gap: 20px;
+}
+
+.risk-metric-unit {
+  text-align: right;
+}
+
+.risk-metric-unit small {
+  display: block;
+  font: 8px 'DM Mono', monospace;
+  color: #6f8679;
+}
+
+.risk-metric-unit strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* Detection Table */
+.data-table-card {
+  background: #0c1410;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.data-table-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: #09100c;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-table-card-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.custom-table-wrap {
+  overflow-x: auto;
+}
+
+.research-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.research-table th {
+  background: #080d0a;
+  padding: 10px 14px;
+  text-align: left;
+  font: 9px 'DM Mono', monospace;
+  color: #728b7e;
+  border-bottom: 1px solid var(--line);
+}
+
+.research-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #132018;
+  color: #d1ded6;
+}
+
+.research-table tr:hover {
+  background: #0f1c15;
+}
+
+/* MathWorks Simulink Visual Console */
+.simulink-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1.1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.simulink-diagram-panel {
+  background: #0a110d;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.simulink-diagram-panel h3 {
+  font-size: 14px;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.svg-diagram-container {
+  width: 100%;
+  background: #060a08;
+  border: 1px solid #1a2a21;
+  border-radius: 9px;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.params-tuning-panel {
+  background: #0c1410;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.param-slider-group {
+  margin-bottom: 14px;
+}
+
+.param-slider-head {
+  display: flex;
+  justify-content: space-between;
+  font: 10px 'DM Mono', monospace;
+  color: #8fa598;
+  margin-bottom: 5px;
+}
+
+.param-slider-group input[type="range"] {
+  width: 100%;
+  accent-color: var(--green);
+}
+
+.simulink-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.simulink-metric-box {
+  background: #080d0a;
+  border: 1px solid #1a2d21;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+
+.simulink-metric-box span {
+  display: block;
+  font: 8px 'DM Mono', monospace;
+  color: #6d8577;
+}
+
+.simulink-metric-box strong {
+  font-size: 17px;
+  margin-top: 4px;
+  display: block;
+}
+
+/* 5 Indian Road Scenarios Bench */
+.scenarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.scenario-card {
+  background: #0c1410;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.scenario-card:hover {
+  border-color: #276246;
+  transform: translateY(-2px);
+}
+
+.scenario-card.active {
+  border-color: var(--green);
+  background: linear-gradient(135deg, #0b261a, #0c1410);
+  box-shadow: 0 0 20px rgba(0, 229, 155, 0.15);
+}
+
+.scenario-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.scenario-icon {
+  font-size: 22px;
+}
+
+.scenario-card h4 {
+  font-size: 13px;
+  margin: 0 0 6px;
+  font-weight: 800;
+}
+
+.scenario-card p {
+  font-size: 10px;
+  color: #84988c;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.scenario-actors-tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.actor-tag {
+  font: 8px 'DM Mono', monospace;
+  background: #081a12;
+  border: 1px solid #164630;
+  color: #82d8ab;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+/* System Verification Matrix */
+.matrix-status-pill {
+  font: 9px 'DM Mono', monospace;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.matrix-status-pill.working {
+  background: #092c1c;
+  color: #38ef9e;
+  border: 1px solid #145939;
+}
+
+.matrix-status-pill.simulated {
+  background: #33260c;
+  color: #ffc85a;
+  border: 1px solid #634b17;
+}
+
+.matrix-status-pill.not-configured {
+  background: #300f13;
+  color: #ff757b;
+  border: 1px solid #6e2329;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .camera-grid-layout,
+  .simulink-grid {
+    grid-template-columns: 1fr;
+  }
+  .side-cameras-column {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .research-container {
+    padding: 14px;
+  }
+  .side-cameras-column {
+    grid-template-columns: 1fr;
+  }
+  .simulink-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
