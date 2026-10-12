@@ -1,0 +1,9 @@
+# Secrets and local runtime files
+.env
+*.db
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+.DS_Store

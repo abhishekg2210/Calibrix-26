@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IRIE — Register Operator Account</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="auth-page">
+  <div class="auth-backdrop"></div>
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="brand-badge">
+          <div class="brand-logo-icon">IR</div>
+          <div>
+            <div class="brand-name">IRIE <span class="tag">REGISTRATION</span></div>
+            <div class="brand-desc">INDIAN ROAD INTELLIGENCE ENGINE</div>
+          </div>
+        </div>
+        <h2>Register Operator</h2>
+        <p class="subtitle">Enroll a new operator or researcher credentials into the local database.</p>
+      </div>
+
+      <div id="authAlert" class="auth-alert" style="display:none;"></div>
+
+      <form id="regForm" class="auth-form" onsubmit="return false;">
+        <div class="form-group">
+          <label for="fullName">FULL NAME</label>
+          <div class="input-wrap">
+            <span class="input-icon">👤</span>
+            <input type="text" id="fullName" name="fullName" placeholder="e.g. Dr. Rajesh Kumar" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="username">USERNAME</label>
+          <div class="input-wrap">
+            <span class="input-icon">🏷️</span>
+            <input type="text" id="username" name="username" placeholder="e.g. rajeshk" required autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="email">EMAIL ADDRESS</label>
+          <div class="input-wrap">
+            <span class="input-icon">✉️</span>
+            <input type="email" id="email" name="email" placeholder="e.g. rajesh@institute.edu" required autocomplete="email">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">PASSWORD (MIN 6 CHARACTERS)</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="role">SYSTEM ROLE</label>
+          <select id="role" name="role" class="auth-select">
+            <option value="operator" selected>Vehicle Operator / Telemetry Monitor</option>
+            <option value="admin">Fleet Commander (Full Admin Access)</option>
+            <option value="viewer">Academic Observer (Read Only)</option>
+          </select>
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn-primary-auth">
+          <span class="btn-text">Create Account & Enter Console →</span>
+          <span class="btn-spinner" style="display:none;">Creating Account…</span>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        <p>Already registered? <a href="{{ url_for('login') }}">Back to Operator Login</a></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('regForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = submitBtn.querySelector('.btn-text');
+    const btnSpinner = submitBtn.querySelector('.btn-spinner');
+    const alertBox = document.getElementById('authAlert');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      alertBox.style.display = 'none';
+
+      const full_name = document.getElementById('fullName').value.trim();
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const role = document.getElementById('role').value;
+
+      if (!username || !email || !password) {
+        showAlert('Please fill in all required fields.', 'error');
+        return;
+      }
+      if (password.length < 6) {
+        showAlert('Password must be at least 6 characters long.', 'error');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      btnText.style.display = 'none';
+      btnSpinner.style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ full_name, username, email, password, role })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.ok) {
+          showAlert('Account registered! Launching workspace…', 'success');
+          setTimeout(() => {
+            window.location.href = data.redirect_url || '/';
+          }, 500);
+        } else {
+          showAlert(data.error || 'Registration failed.', 'error');
+          submitBtn.disabled = false;
+          btnText.style.display = 'inline-block';
+          btnSpinner.style.display = 'none';
+        }
+      } catch (err) {
+        showAlert('Network or connection error. Ensure Flask server is running.', 'error');
+        submitBtn.disabled = false;
+        btnText.style.display = 'inline-block';
+        btnSpinner.style.display = 'none';
+      }
+    });
+
+    function showAlert(msg, type) {
+      alertBox.textContent = msg;
+      alertBox.className = 'auth-alert ' + (type === 'success' ? 'alert-success' : 'alert-error');
+      alertBox.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

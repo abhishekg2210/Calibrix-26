@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IRIE — Fleet Operator Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Manrope:wght@600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="auth-page">
+  <div class="auth-backdrop"></div>
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="brand-badge">
+          <div class="brand-logo-icon">IR</div>
+          <div>
+            <div class="brand-name">IRIE <span class="tag">ENTERPRISE</span></div>
+            <div class="brand-desc">INDIAN ROAD INTELLIGENCE ENGINE</div>
+          </div>
+        </div>
+        <h2>Operator Console</h2>
+        <p class="subtitle">Secure mission control and telemetry for Arduino autonomous prototypes.</p>
+      </div>
+
+      <div id="authAlert" class="auth-alert" style="display:none;"></div>
+
+      <div class="demo-banner">
+        <div>
+          <b>Demo Evaluator Access</b>
+          <span>Default credentials: <code>{{ demo_email }}</code> / <code>{{ demo_password }}</code></span>
+        </div>
+        <button type="button" id="quickDemoBtn" class="btn-demo">Quick Fill</button>
+      </div>
+
+      <form id="loginForm" class="auth-form" onsubmit="return false;">
+        <div class="form-group">
+          <label for="identifier">EMAIL OR OPERATOR ID</label>
+          <div class="input-wrap">
+            <span class="input-icon">👤</span>
+            <input type="text" id="identifier" name="identifier" placeholder="e.g. admin@irie.ai" required autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="label-row">
+            <label for="password">PASSWORD</label>
+            <span class="form-hint-link" onclick="alert('For academic evaluation, use the demo credentials provided above.')">Forgot password?</span>
+          </div>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" id="togglePasswordBtn" class="toggle-pwd" title="Show/Hide Password">👁</button>
+          </div>
+        </div>
+
+        <div class="form-actions-row">
+          <label class="remember-label">
+            <input type="checkbox" id="rememberMe" checked>
+            <span>Remember this device</span>
+          </label>
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn-primary-auth">
+          <span class="btn-text">Authenticate & Launch Console →</span>
+          <span class="btn-spinner" style="display:none;">⏳ Authenticating…</span>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        <p>New fleet operator? <a href="{{ url_for('register') }}">Register new operator account</a></p>
+        <small class="academic-note">Academic Autonomous Vehicle Prototype · IRIE Core v2.4 · Hardware Safety Locked</small>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = submitBtn.querySelector('.btn-text');
+    const btnSpinner = submitBtn.querySelector('.btn-spinner');
+    const alertBox = document.getElementById('authAlert');
+    const identifierInput = document.getElementById('identifier');
+    const passwordInput = document.getElementById('password');
+    const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+    const quickDemoBtn = document.getElementById('quickDemoBtn');
+
+    togglePasswordBtn.addEventListener('click', () => {
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        togglePasswordBtn.textContent = '🙈';
+      } else {
+        passwordInput.type = 'password';
+        togglePasswordBtn.textContent = '👁';
+      }
+    });
+
+    quickDemoBtn.addEventListener('click', () => {
+      identifierInput.value = "{{ demo_email }}";
+      passwordInput.value = "{{ demo_password }}";
+      identifierInput.focus();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      alertBox.style.display = 'none';
+
+      const identifier = identifierInput.value.trim();
+      const password = passwordInput.value;
+      const remember = document.getElementById('rememberMe').checked;
+
+      if (!identifier || !password) {
+        showAlert('Please enter both your identifier and password.', 'error');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      btnText.style.display = 'none';
+      btnSpinner.style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, password, remember })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.ok) {
+          showAlert('Authentication confirmed. Directing to mission console…', 'success');
+          setTimeout(() => {
+            window.location.href = data.redirect_url || '/';
+          }, 450);
+        } else {
+          showAlert(data.error || 'Authentication rejected. Check credentials.', 'error');
+          submitBtn.disabled = false;
+          btnText.style.display = 'inline-block';
+          btnSpinner.style.display = 'none';
+        }
+      } catch (err) {
+        showAlert('Network or connection error. Ensure Flask server is running.', 'error');
+        submitBtn.disabled = false;
+        btnText.style.display = 'inline-block';
+        btnSpinner.style.display = 'none';
+      }
+    });
+
+    function showAlert(msg, type) {
+      alertBox.textContent = msg;
+      alertBox.className = 'auth-alert ' + (type === 'success' ? 'alert-success' : 'alert-error');
+      alertBox.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

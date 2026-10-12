@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RoadGuard AI | Adaptive Navigation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+<header class="topbar"><div class="brand"><div class="brand-mark">RG</div><div><strong>ROADGUARD <span>AI</span></strong><small>IRIE ADAPTIVE NAVIGATION SYSTEM</small></div></div>
+<div class="top-status"><span class="live-dot"></span><span id="systemStatus">SYSTEM READY</span><span class="separator"></span><span id="mapProvider">LEAFLET ACTIVE (CARTO/OSM)</span></div>
+<div class="top-actions"><button class="icon-button" id="themeBtn" title="Switch map theme (Dark/Street/Voyager)">◐ Map Style</button><div class="operator"><div class="avatar">{{ user.username[0].upper() if user and user.username else 'O' }}</div><div><b>{{ user.full_name or user.username or 'Operator' }}</b><small>{{ (user.role or 'operator').upper() }}</small></div></div><form action="/api/auth/logout" method="post" id="logoutForm"><button class="ghost-button" type="submit">Log out ↗</button></form></div></header>
+<main class="workspace">
+<aside class="sidebar">
+<div class="section-heading"><div><span class="eyebrow">MISSION CONTROL</span><h1>Route planner</h1></div><span class="status-tag" id="routingModeTag">READY</span></div>
+<div class="route-form panel"><div class="field-label">ORIGIN (STARTING POINT)</div><div class="location-field"><span class="point-icon origin"></span><input id="originInput" placeholder="Detecting current GPS location..." value="📍 Current Location"><button id="useLocationBtn" title="Detect & Use Current GPS Location">◎</button></div><div class="field-label">DESTINATION</div><div class="location-field"><span class="point-icon destination"></span><input id="destinationInput" placeholder="Search destination" value="Coimbatore Railway Station"><button id="swapBtn" title="Swap origin and destination">↕</button></div><div class="form-grid"><label>TRAVEL MODE<select id="travelMode"><option value="DRIVE">Driving</option></select></label><label>REROUTING<select id="rerouteMode"><option value="automatic" selected>Automatic reroute</option><option value="approval">Ask before switching</option></select></label></div><button class="primary-button" id="calculateBtn"><span>⌁</span> Calculate routes <span class="button-arrow">→</span></button><div class="small-note" id="routeProviderNote">Route estimates appear after calculation.</div></div>
+<div class="section-heading compact"><div><span class="eyebrow">ROUTE OPTIONS</span><h2>Available corridors</h2></div><span class="count-pill" id="routeCount">0</span></div><div id="routeList" class="route-list"><div class="empty-state"><div class="empty-icon">⌁</div><b>No route calculated</b><span>Choose an origin and destination to compare routes.</span></div></div>
+<div class="section-heading compact"><div><span class="eyebrow">ROAD INTELLIGENCE</span><h2>Hazard & entity monitor</h2></div><div class="header-action-group"><button class="text-button" id="reportHazardBtn">+ Form</button><button class="text-button danger-text" id="clearHazardsSidebarBtn">Clear</button></div></div><div class="hazard-disclaimer">Interactive AI perception simulation: Add obstacles, moving pedestrians, construction, or road blocks directly onto the Leaflet map for project review.</div><div id="hazardList" class="hazard-list"><div class="empty-inline">No active entities on map. Use the toolbar above map or click to insert.</div></div>
+<div class="panel report-panel" id="reportPanel" hidden><div class="panel-title">Report a road entity / hazard</div><label>TYPE<select id="hazardType"><option value="Obstacle" selected>⚠️ Obstacle (Pothole / Debris / Hazard)</option><option value="Pedestrian Moving">🚶 Pedestrian Moving (Animated Crosswalk)</option><option value="Construction Working">🚧 Construction Working (Work Zone)</option><option value="Road Blocked">⛔ Road Blocked (Corridor Impassable)</option><option value="Pothole">Pothole</option><option value="Road crack">Road crack</option><option value="Waterlogging">Waterlogging</option><option value="Accident">Accident</option><option value="Barricade">Barricade</option><option value="Other">Other</option></select></label><label>SEVERITY<select id="hazardSeverity"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select></label><div class="form-grid"><label>LATITUDE<input id="hazardLat" type="number" step="any" placeholder="11.0168"></label><label>LONGITUDE<input id="hazardLng" type="number" step="any" placeholder="76.9558"></label></div><div class="button-row"><button class="secondary-button" id="cancelReportBtn">Cancel</button><button class="primary-button small" id="submitHazardBtn">Submit report</button></div></div>
+<div class="sidebar-footer"><span class="mini-shield">◇</span><div><b>Autonomous Safety AI</b><small>Continuous perception evaluation with dynamic multi-corridor rerouting.</small></div></div>
+</aside>
+<section class="map-area">
+<div class="map-toolbar">
+<div><span class="eyebrow">LEAFLET NAVIGATION COCKPIT</span><div class="map-title">Route intelligence <span class="map-live-pill"><i></i> LEAFLET ONLINE</span></div></div>
+<div class="map-controls">
+<button id="trafficBtn" class="control-button">▤ Congestion layer</button>
+<button id="followBtn" class="control-button">◎ Follow vehicle</button>
+<button id="demoBtn" class="control-button">▶ Demo drive</button>
+</div>
+</div>
+
+<!-- Interactive Entity Insertion Toolbar for Leaflet Map -->
+<div class="map-entity-toolbar" id="entityToolbar">
+<div class="entity-toolbar-label">
+<span class="toolbar-dot"></span>
+<b>INSERT ON MAP:</b>
+</div>
+<div class="entity-tool-group">
+<button type="button" class="entity-tool-btn" id="toolObstacle" data-type="Obstacle" title="Insert road obstacle (pothole, fallen tree, road debris)">
+<span class="tool-icon">⚠️</span>
+<span class="tool-label">Obstacle</span>
+</button>
+<button type="button" class="entity-tool-btn" id="toolPedestrian" data-type="Pedestrian Moving" title="Insert moving pedestrian (animated crosswalk / walking pedestrian)">
+<span class="tool-icon">🚶</span>
+<span class="tool-label">Pedestrian Moving</span>
+</button>
+<button type="button" class="entity-tool-btn" id="toolConstruction" data-type="Construction Working" title="Insert active construction work zone with caution perimeter">
+<span class="tool-icon">🚧</span>
+<span class="tool-label">Construction</span>
+</button>
+<button type="button" class="entity-tool-btn" id="toolRoadBlocked" data-type="Road Blocked" title="Insert road blockage (forces instant corridor rerouting)">
+<span class="tool-icon">⛔</span>
+<span class="tool-label">Road Blocked</span>
+</button>
+</div>
+<div class="entity-actions-group">
+<button type="button" class="entity-action-btn highlight" id="quickAddOnRouteBtn" title="Automatically drop selected item onto active route for instant detection">
+<span>⚡</span> Quick Add on Route
+</button>
+<div class="scenarios-menu-wrap">
+<button type="button" class="entity-action-btn" id="demoScenariosBtn" title="Pre-configured review demonstration scenarios">
+<span>🎬</span> Review Scenarios ▾
+</button>
+<div class="scenarios-dropdown" id="scenariosDropdown" hidden>
+<div class="dropdown-header">PROJECT REVIEW PRESETS</div>
+<button type="button" class="scenario-item" data-scenario="pedestrian">
+<span class="scen-icon">🚶</span>
+<div><b>Pedestrian Crossing Ahead</b><small>Spawns moving pedestrian crossing current vehicle path</small></div>
+</button>
+<button type="button" class="scenario-item" data-scenario="construction">
+<span class="scen-icon">🚧</span>
+<div><b>Work Zone Ahead (20 km/h)</b><small>Places active construction & speed caution perimeter</small></div>
+</button>
+<button type="button" class="scenario-item" data-scenario="blockage">
+<span class="scen-icon">⛔</span>
+<div><b>Corridor Blockage & Auto-Reroute</b><small>Blocks main highway & demonstrates instant bypass switch</small></div>
+</button>
+<button type="button" class="scenario-item" data-scenario="combo">
+<span class="scen-icon">🚨</span>
+<div><b>Full Urban Perception Stack</b><small>Deploys obstacle + moving pedestrian + work zone</small></div>
+</button>
+</div>
+</div>
+<button type="button" class="entity-action-btn danger" id="clearAllHazardsBtn" title="Remove all placed entities from the map">
+<span>🗑️</span> Clear All
+</button>
+</div>
+</div>
+
+<!-- Dynamic Reroute Alert Banner -->
+<div class="dynamic-reroute-banner" id="dynamicRerouteBanner" hidden>
+  <div class="reroute-banner-left">
+    <span class="reroute-pulse-dot"></span>
+    <span class="reroute-banner-icon">🔄</span>
+    <div class="reroute-banner-text">
+      <b id="rerouteBannerTitle">DYNAMIC REROUTE ACTIVE</b>
+      <span id="rerouteBannerSubtitle">Vehicle corridor altered: Detouring around road obstacle</span>
+    </div>
+  </div>
+  <div class="reroute-banner-badge" id="rerouteBannerBadge">SAFE BYPASS</div>
+</div>
+
+<!-- Placement Mode Indicator Banner -->
+<div class="map-placement-banner" id="mapPlacementBanner" hidden>
+<div class="banner-body">
+<span class="banner-crosshair">🎯</span>
+<span id="placementBannerText">Click anywhere on the map to place Obstacle</span>
+</div>
+<button type="button" id="cancelPlacementBtn" class="banner-cancel-btn">✕ Cancel (Esc)</button>
+</div>
+
+<div id="map"></div>
+<div class="map-legend">
+<span><i class="legend-line active"></i> Selected Route</span>
+<span><i class="legend-line alt"></i> Safe Alternative</span>
+<span><i class="legend-badge obstacle">⚠️</i> Obstacle</span>
+<span><i class="legend-badge pedestrian">🚶</i> Moving Pedestrian</span>
+<span><i class="legend-badge construction">🚧</i> Construction</span>
+<span><i class="legend-badge blocked">⛔</i> Road Blocked</span>
+<span id="mapDataBadge">ENGINE: LEAFLET (OPENSTREETMAP / CARTO)</span>
+</div>
+<div class="map-bottom-cards"><div class="metric-card"><span class="metric-label">ESTIMATED ARRIVAL</span><strong id="etaMetric">—</strong><small id="etaSub">Calculate a route</small></div><div class="metric-card"><span class="metric-label">DISTANCE</span><strong id="distanceMetric">—</strong><small>Selected route</small></div><div class="metric-card"><span class="metric-label">VEHICLE SOURCE</span><strong id="vehicleSource">DEMO</strong><small id="vehicleStatus">Not tracking</small></div><div class="metric-card risk-card"><span class="metric-label">ROUTE RISK</span><strong id="riskMetric">UNKNOWN</strong><small id="riskSub">No route assessed</small></div></div></section>
+<aside class="right-rail"><div class="rail-heading"><span class="eyebrow">VEHICLE TELEMETRY</span><span class="live-chip"><i></i> <span id="telemetryType">DEMO</span></span></div><div class="vehicle-card"><div class="vehicle-top"><div><small>VEHICLE STATUS</small><h3 id="vehicleHealth">STANDBY</h3></div><div class="vehicle-icon">▰</div></div><div class="speed-readout"><strong id="speedVal">0</strong><span>km/h</span><div class="speed-gauge"><div id="speedGauge"></div></div></div><div class="telemetry-grid"><div><span>HEADING</span><b id="headingVal">—</b></div><div><span>BATTERY</span><b id="batteryVal">—</b></div><div><span>VIBRATION</span><b id="vibrationVal">—</b></div><div><span>LAST UPDATE</span><b id="updateVal">—</b></div></div><div class="vehicle-buttons"><button class="secondary-button" id="trackBtn">Start GPS</button><button class="secondary-button" id="stopTrackBtn">Stop</button></div><div class="source-note" id="sourceNote">Browser GPS requires permission. Hardware data is optional.</div></div>
+<div class="section-heading compact rail-section"><div><span class="eyebrow">SENSOR STATUS</span><h2>Perception stack</h2></div><span class="demo-label">SIMULATED</span></div><div class="sensor-list"><div class="sensor-row"><span class="sensor-symbol">◉</span><div><b>Camera</b><small>Virtual object classification</small></div><span class="sensor-state">DEMO</span></div><div class="sensor-row"><span class="sensor-symbol">⌁</span><div><b>LiDAR</b><small>Virtual range scan</small></div><span class="sensor-state">DEMO</span></div><div class="sensor-row"><span class="sensor-symbol">⌖</span><div><b>Radar</b><small>Virtual motion tracking</small></div><span class="sensor-state">DEMO</span></div></div>
+<div class="section-heading compact rail-section"><div><span class="eyebrow">SYSTEM ACTIVITY</span><h2>Event timeline</h2></div><button class="text-button" id="clearEventsBtn">Clear</button></div><div id="eventLog" class="event-log"><div class="event"><span class="event-dot green"></span><div><b>System initialized</b><small>RoadGuard AI console ready.</small><time>Just now</time></div></div></div>
+<div class="rail-footer"><span class="footer-indicator"></span><div><b id="apiStatus">ROUTING PROVIDER READY</b><small id="apiStatusSub">Google Maps activates when configured.</small></div></div></aside>
+</main>
+<div class="toast" id="toast" role="status"></div><div class="modal-backdrop" id="rerouteModal" hidden><div class="modal"><div class="modal-icon">↗</div><span class="eyebrow">SAFER ALTERNATIVE AVAILABLE</span><h2>Review route change</h2><p id="rerouteMessage">A reported hazard may affect the selected route.</p><div class="modal-actions"><button class="secondary-button" id="rejectRerouteBtn">Keep current route</button><button class="primary-button" id="acceptRerouteBtn">Use alternative route</button></div></div></div>
+</div>
+<script>window.ROADGUARD_CONFIG={browserKey:{{ (config.get('GOOGLE_MAPS_BROWSER_KEY','') or '')|tojson }}};</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body></html>
