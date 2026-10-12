@@ -7,3 +7,10 @@ __pycache__/
 venv/
 node_modules/
 .DS_Store
+
+# Large model artifacts (>100MB)
+models/*.onnx
+models/*.engine
+*.onnx
+*.engine
+temp_faris_repo/

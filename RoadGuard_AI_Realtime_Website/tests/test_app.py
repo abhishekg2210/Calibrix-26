@@ -55,7 +55,7 @@ class IrieComprehensiveTestCase(unittest.TestCase):
         # 2. Access protected route with active session
         res_dash = self.client.get('/')
         self.assertEqual(res_dash.status_code, 200)
-        self.assertIn(b'IRIE', res_dash.data)
+        self.assertTrue(b'RoadGuard' in res_dash.data or b'ROADGUARD' in res_dash.data or b'IRIE' in res_dash.data)
 
         # 3. Logout
         res_logout = self.client.post('/api/auth/logout')

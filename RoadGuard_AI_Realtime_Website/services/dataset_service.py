@@ -151,10 +151,12 @@ class DatasetTrainingService:
         dataset_name: str = "indian_road_benchmark",
         epochs: int = 5,
         batch_size: int = 8,
-        img_size: int = 640
+        img_size: int = 640,
+        architecture: str = "best.pt"
     ) -> Dict[str, Any]:
         """
         Launches a real backend training thread using Ultralytics YOLO.
+        Supports Faris Agour YOLOv8m KITTI architecture, YOLOv8n, and custom weights.
         """
         validation = self.validate_dataset(dataset_name)
         if not validation.get("ok"):
@@ -164,9 +166,24 @@ class DatasetTrainingService:
         hw = self.get_hardware_info()
         device_arg = "0" if hw["cuda_available"] else "cpu"
 
+        models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+        arch_file = os.path.basename(architecture)
+        target_base = os.path.join(models_dir, arch_file)
+        if not os.path.exists(target_base):
+            if arch_file in ("yolov8m_kitti_enhanced.pt", "best.pt"):
+                alt = os.path.join(models_dir, "best.pt" if arch_file == "yolov8m_kitti_enhanced.pt" else "yolov8m_kitti_enhanced.pt")
+                if os.path.exists(alt):
+                    target_base = alt
+            elif os.path.exists(arch_file):
+                target_base = arch_file
+            else:
+                target_base = "yolov8n.pt"
+
         job = {
             "job_id": job_id,
             "dataset": dataset_name,
+            "architecture": arch_file,
+            "base_weights": target_base,
             "epochs": epochs,
             "batch_size": batch_size,
             "img_size": img_size,
@@ -176,7 +193,10 @@ class DatasetTrainingService:
             "epoch_total": epochs,
             "start_time": time.time(),
             "metrics": {"mAP50": 0.0, "mAP50_95": 0.0, "precision": 0.0, "recall": 0.0},
-            "logs": [f"[{time.strftime('%H:%M:%S')}] Training job initialized on {hw['device_name']}."]
+            "logs": [
+                f"[{time.strftime('%H:%M:%S')}] Training job initialized on {hw['device_name']}.",
+                f"[{time.strftime('%H:%M:%S')}] Selected base architecture: {arch_file}."
+            ]
         }
         self.active_jobs[job_id] = job
 
@@ -185,11 +205,11 @@ class DatasetTrainingService:
             try:
                 from ultralytics import YOLO
                 job["status"] = "TRAINING"
-                job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Loading base architecture (yolov8n.pt)...")
-                model = YOLO("yolov8n.pt")
+                job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Loading base architecture ({target_base})...")
+                model = YOLO(target_base)
 
                 yaml_path = os.path.join(self.base_dir, dataset_name, "data.yaml")
-                job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Commencing fine-tuning for {epochs} epochs...")
+                job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Commencing fine-tuning for {epochs} epochs on dataset {dataset_name}...")
 
                 # Real training invocation
                 results = model.train(
@@ -227,9 +247,27 @@ class DatasetTrainingService:
 
                 job["metrics"] = real_metrics
                 job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Training process concluded. Metrics: {real_metrics.get('status')}.")
+                # Notify perception service to reload weights
+                try:
+                    from services.perception_service import perception_service
+                    best_saved = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "best.pt")
+                    if os.path.exists(best_saved):
+                        perception_service.reload_model(best_saved)
+                except Exception:
+                    pass
             except Exception as e:
                 job["status"] = "FAILED"
                 job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Training aborted: {e}")
+
+        th = threading.Thread(target=_train_worker, daemon=True)
+        th.start()
+
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "message": f"Training job {job_id} launched on {hw['device_name']}.",
+            "hardware": hw
+        }
 
     def evaluate_video_or_dataset(
         self,
@@ -328,16 +366,6 @@ class DatasetTrainingService:
             }
         else:
             return {"ok": False, "error": "Evaluation for folder datasets requires dataset validation."}
-
-        th = threading.Thread(target=_train_worker, daemon=True)
-        th.start()
-
-        return {
-            "ok": True,
-            "job_id": job_id,
-            "message": f"Training job {job_id} launched on {hw['device_name']}.",
-            "hardware": hw
-        }
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
         job = self.active_jobs.get(job_id)

@@ -21,58 +21,54 @@ class DrivingSimulationTests(unittest.TestCase):
     # 1. SCENARIO CONFIGURATION TESTS (PHASE 1 & 2)
     # -------------------------------------------------------------------------
 
-    def test_all_five_scenarios_configured(self):
+    def test_all_scenarios_configured(self):
         scenarios = simulation_engine.get_scenarios_list()
-        self.assertEqual(len(scenarios), 5)
-        expected_ids = {"scenario_1", "scenario_2", "scenario_3", "scenario_4", "scenario_5"}
+        self.assertGreaterEqual(len(scenarios), 20)
+        expected_ids = {f"scenario_{i}" for i in range(1, 21)}
         actual_ids = {s["id"] for s in scenarios}
-        self.assertEqual(actual_ids, expected_ids)
+        self.assertTrue(expected_ids.issubset(actual_ids))
 
-    def test_scenario_1_pedestrian_crossing(self):
+    def test_scenario_1_normal_traffic(self):
         sc = simulation_engine.get_scenario("scenario_1")
         self.assertIsNotNone(sc)
         self.assertEqual(sc["id"], "scenario_1")
-        self.assertIn("Pedestrian", sc["name"])
+        self.assertIn("Traffic", sc["name"])
         self.assertGreater(len(sc["obstacles"]), 0)
+        lead_car = sc["obstacles"][0]
+        self.assertEqual(lead_car["type"], "car")
+
+    def test_scenario_2_pedestrian_crossing(self):
+        sc = simulation_engine.get_scenario("scenario_2")
+        self.assertIsNotNone(sc)
+        self.assertEqual(sc["id"], "scenario_2")
+        self.assertIn("Pedestrian", sc["name"])
         ped = sc["obstacles"][0]
         self.assertEqual(ped["type"], "pedestrian")
         self.assertLess(ped["vy"], 0.0)  # Crossing towards centerline
 
-    def test_scenario_2_motorcycle_merging(self):
-        sc = simulation_engine.get_scenario("scenario_2")
-        self.assertIsNotNone(sc)
-        self.assertEqual(sc["id"], "scenario_2")
-        self.assertIn("Motorcycle", sc["name"])
-        mtr = sc["obstacles"][0]
-        self.assertEqual(mtr["type"], "motorcycle")
-        self.assertGreater(mtr["vx"], 0.0)  # Longitudinal motion
-        self.assertGreater(mtr["vy"], 0.0)  # Merging from shoulder
-
-    def test_scenario_3_pothole_corridor(self):
+    def test_scenario_3_child_occlusion(self):
         sc = simulation_engine.get_scenario("scenario_3")
         self.assertIsNotNone(sc)
         self.assertEqual(sc["id"], "scenario_3")
-        self.assertIn("Pothole", sc["name"])
-        pot = sc["obstacles"][0]
-        self.assertEqual(pot["type"], "pothole")
-        self.assertEqual(pot["speed_mps"], 0.0)  # Static defect
-        self.assertAlmostEqual(pot["y"], 0.1, places=1)  # On vehicle centerline
+        self.assertIn("Child", sc["name"])
+        ped_child = next(o for o in sc["obstacles"] if o["id"] == "PED_CHILD")
+        self.assertEqual(ped_child["type"], "pedestrian")
 
-    def test_scenario_4_cattle_wandering(self):
+    def test_scenario_4_sudden_braking(self):
         sc = simulation_engine.get_scenario("scenario_4")
         self.assertIsNotNone(sc)
         self.assertEqual(sc["id"], "scenario_4")
-        self.assertIn("Cattle", sc["name"])
-        cat = sc["obstacles"][0]
-        self.assertEqual(cat["type"], "cattle")
-        self.assertGreater(cat["radius_m"], 1.2)  # Large hazard
+        self.assertIn("Braking", sc["name"])
+        lead = sc["obstacles"][0]
+        self.assertEqual(lead["type"], "car")
 
-    def test_scenario_5_dense_traffic_blockade(self):
+    def test_scenario_5_motorcycle_cutin(self):
         sc = simulation_engine.get_scenario("scenario_5")
         self.assertIsNotNone(sc)
         self.assertEqual(sc["id"], "scenario_5")
-        self.assertIn("Dense Traffic", sc["name"])
-        self.assertEqual(len(sc["obstacles"]), 3)  # Auto-rickshaw, barrier, parked car
+        self.assertIn("Motorcycle", sc["name"])
+        mtr = sc["obstacles"][0]
+        self.assertEqual(mtr["type"], "motorcycle")
 
     # -------------------------------------------------------------------------
     # 2. PLANNING DECISIONS & RISK ASSESSMENT TESTS (PHASE 3)
@@ -157,7 +153,7 @@ class DrivingSimulationTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data["ok"])
-        self.assertEqual(len(data["scenarios"]), 5)
+        self.assertGreaterEqual(len(data["scenarios"]), 20)
 
         # 2. Scenario detail
         sc_res = self.fastapi_client.get("/api/autonomous/simulation/scenario/scenario_1")
@@ -186,7 +182,7 @@ class DrivingSimulationTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data["ok"])
-        self.assertEqual(len(data["scenarios"]), 5)
+        self.assertGreaterEqual(len(data["scenarios"]), 20)
 
         # 2. Scenario detail
         sc_res = self.flask_client.get("/api/autonomous/simulation/scenario/scenario_2")

@@ -207,11 +207,17 @@ class VideoAnalysisService:
         }
         return True, None, metadata
 
-    def create_job(self, original_filename: str, saved_path: str, metadata: Dict[str, Any]) -> str:
-        """Initializes a new asynchronous video analysis job record."""
+    def create_job(self, original_filename: str, saved_path: str, metadata: Dict[str, Any], options: Optional[Dict[str, Any]] = None) -> str:
+        """Initializes a new asynchronous video analysis job record with configurable options."""
         job_id = f"job_{uuid.uuid4().hex[:10]}"
         snapshot_dir = os.path.join(SNAPSHOTS_DIR, job_id)
         os.makedirs(snapshot_dir, exist_ok=True)
+
+        opts = options or {}
+        sample_interval = max(1, int(opts.get("sample_interval") or opts.get("frame_skip") or 2))
+        max_frames = int(opts.get("max_frames") or 0)  # 0 or None means analyze full video
+        conf_thresh = float(opts.get("conf_threshold") or 0.35)
+        iou_thresh = float(opts.get("iou_threshold") or 0.25)
 
         job_record = {
             "job_id": job_id,
@@ -219,7 +225,14 @@ class VideoAnalysisService:
             "video_path": saved_path,
             "snapshot_dir": snapshot_dir,
             "metadata": metadata,
+            "options": {
+                "sample_interval": sample_interval,
+                "max_frames": max_frames,
+                "conf_threshold": conf_thresh,
+                "iou_threshold": iou_thresh
+            },
             "status": "PROCESSING",
+            "cancelled": False,
             "progress_pct": 0.0,
             "current_frame": 0,
             "total_frames": metadata.get("total_frames", 0),
@@ -231,7 +244,7 @@ class VideoAnalysisService:
                 {
                     "timestamp": time.strftime("%H:%M:%S"),
                     "type": "UPLOAD",
-                    "message": f"Uploaded road video '{original_filename}' ({metadata.get('resolution')}, {metadata.get('fps')} FPS)."
+                    "message": f"Uploaded road video '{original_filename}' ({metadata.get('resolution')}, {metadata.get('fps')} FPS, {metadata.get('total_frames')} frames). Config: step={sample_interval}, max_frames={'FULL VIDEO' if max_frames <= 0 else max_frames}."
                 }
             ],
             "result": None,
@@ -249,10 +262,10 @@ class VideoAnalysisService:
 
         return job_id
 
-    def get_or_create_job_for_video(self, filename: str) -> Tuple[bool, Optional[str], Optional[str], Optional[Dict[str, Any]]]:
+    def get_or_create_job_for_video(self, filename: str, options: Optional[Dict[str, Any]] = None, force_new: bool = False) -> Tuple[bool, Optional[str], Optional[str], Optional[Dict[str, Any]]]:
         """
         Looks for an active or completed job for this video file,
-        or creates a new job if none exists.
+        or creates a new job if none exists or force_new is requested.
         Returns: (success, job_id, error_msg, metadata)
         """
         safe_name = os.path.basename(filename)
@@ -260,17 +273,76 @@ class VideoAnalysisService:
         if not os.path.exists(video_path):
             return False, None, f"Video '{safe_name}' not found on server.", None
 
-        with self._lock:
-            for j_id, j in self._jobs.items():
-                if j.get("video_path") == video_path and j.get("status") in ("COMPLETED", "RUNNING"):
-                    return True, j_id, None, j.get("metadata")
+        if not force_new:
+            with self._lock:
+                for j_id, j in self._jobs.items():
+                    if j.get("video_path") == video_path and j.get("status") in ("COMPLETED", "RUNNING", "PROCESSING"):
+                        return True, j_id, None, j.get("metadata")
 
         is_readable, err, meta = self.validate_video_file_readable(video_path)
         if not is_readable:
             return False, None, err, None
 
-        job_id = self.create_job(safe_name, video_path, meta)
+        job_id = self.create_job(safe_name, video_path, meta, options=options)
         return True, job_id, None, meta
+
+    def pause_job(self, job_id: str) -> Tuple[bool, str]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return False, "Job not found"
+            if job["status"] in ("COMPLETED", "FAILED", "CANCELLED"):
+                return False, f"Cannot pause job in {job['status']} state"
+            job["status"] = "PAUSED"
+            job["events"].append({
+                "timestamp": time.strftime("%H:%M:%S"),
+                "type": "CONTROL",
+                "message": "Video analysis paused by user."
+            })
+            return True, "Job paused"
+
+    def resume_job(self, job_id: str) -> Tuple[bool, str]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return False, "Job not found"
+            if job["status"] != "PAUSED":
+                return False, f"Job is not paused (current status: {job['status']})"
+            job["status"] = "PROCESSING"
+            job["events"].append({
+                "timestamp": time.strftime("%H:%M:%S"),
+                "type": "CONTROL",
+                "message": "Video analysis resumed."
+            })
+            return True, "Job resumed"
+
+    def cancel_job(self, job_id: str) -> Tuple[bool, str]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return False, "Job not found"
+            job["cancelled"] = True
+            job["status"] = "CANCELLED"
+            job["events"].append({
+                "timestamp": time.strftime("%H:%M:%S"),
+                "type": "CONTROL",
+                "message": "Video analysis cancelled by user."
+            })
+            return True, "Job cancelled"
+
+    def restart_job(self, job_id: str, options: Optional[Dict[str, Any]] = None) -> Tuple[bool, Optional[str], str]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return False, None, "Job not found"
+            video_path = job["video_path"]
+            filename = job["filename"]
+            meta = job["metadata"]
+            # Cancel current
+            job["cancelled"] = True
+
+        new_id = self.create_job(filename, video_path, meta, options=options)
+        return True, new_id, "Job restarted"
 
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Returns the job record or None if not found."""
@@ -278,13 +350,18 @@ class VideoAnalysisService:
             return self._jobs.get(job_id)
 
     def _run_analysis_worker(self, job_id: str):
-        """Asynchronous worker that processes the video frame by frame with real YOLO inference."""
+        """Asynchronous worker that processes the full video frame by frame with real YOLO inference."""
         job = self.get_job(job_id)
         if not job:
             return
 
         video_path = job["video_path"]
         snapshot_dir = job["snapshot_dir"]
+        opts = job.get("options", {})
+        sample_interval = max(1, int(opts.get("sample_interval") or 2))
+        max_frames_limit = int(opts.get("max_frames") or 0)
+        conf_thresh = float(opts.get("conf_threshold") or 0.35)
+        iou_thresh = float(opts.get("iou_threshold") or 0.25)
 
         try:
             cap = cv2.VideoCapture(video_path)
@@ -299,31 +376,43 @@ class VideoAnalysisService:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            # Limit max frames to analyze for fast interactive response (up to 75 sampled frames)
-            max_sampled_frames = 60
-            sample_interval = max(1, int(total_frames / max_sampled_frames)) if total_frames > max_sampled_frames else 2
-
             frame_idx = 0
             analyzed_count = 0
             inference_times: List[float] = []
             class_summary: Dict[str, int] = {}
             timeline = []
             snapshots = []
-            job_tracker = ObjectTracker(iou_threshold=0.25)
+            job_tracker = ObjectTracker(iou_threshold=iou_thresh)
             t_work_start = time.perf_counter()
 
-            # Check model availability
+            # Check model availability and set confidence
+            perception_service.set_confidence_threshold(conf_thresh)
             model_status = perception_service.get_status()
             with self._lock:
                 job["events"].append({
                     "timestamp": time.strftime("%H:%M:%S"),
                     "type": "INFERENCE_START",
-                    "message": f"Inference pipeline initialized: {model_status.get('status_text')} (Threshold: {model_status.get('confidence_threshold')})."
+                    "message": f"Inference pipeline initialized: {model_status.get('status_text')} (Threshold: {conf_thresh}, Sample step: {sample_interval}, Max frames: {'FULL CLIP' if max_frames_limit <= 0 else max_frames_limit})."
                 })
 
-            while cap.isOpened() and analyzed_count < max_sampled_frames:
+            while cap.isOpened():
+                # Check for cancellation
+                if job.get("cancelled") or job.get("status") == "CANCELLED":
+                    break
+
+                # Handle pause state
+                while job.get("status") == "PAUSED" and not job.get("cancelled"):
+                    time.sleep(0.2)
+
+                if job.get("cancelled"):
+                    break
+
+                # Stop if user set a specific max frames limit
+                if max_frames_limit > 0 and analyzed_count >= max_frames_limit:
+                    break
+
                 ret, frame = cap.read()
-                if not ret:
+                if not ret or frame is None:
                     break
 
                 if frame_idx % sample_interval == 0:
@@ -354,13 +443,12 @@ class VideoAnalysisService:
                         class_summary[cname] = class_summary.get(cname, 0) + 1
                         frame_classes[cname] = frame_classes.get(cname, 0) + 1
 
-                    # Save snapshot every 6 sampled frames
+                    # Save snapshots periodically (every 20 sampled frames or on critical hazard)
                     snapshot_filename = None
-                    if analyzed_count % 6 == 0:
+                    if (analyzed_count % 20 == 0 or is_ped_crossing) and len(snapshots) < 80:
                         snapshot_filename = f"frame_{frame_idx:05d}.jpg"
                         snap_path = os.path.join(snapshot_dir, snapshot_filename)
                         
-                        # Draw bounding boxes, track IDs, and confidence on frame
                         annotated_frame = frame.copy()
                         for t in tracks:
                             box = [int(v) for v in t["bbox"]]
@@ -374,14 +462,17 @@ class VideoAnalysisService:
                         cv2.imwrite(snap_path, annotated_frame)
                         snapshots.append(snapshot_filename)
 
-                    # Event log entry for notable detections
-                    if dets and analyzed_count % 4 == 0:
+                    # Event log entry for notable events
+                    if (dets and analyzed_count % 15 == 0) or is_ped_crossing:
                         det_summary_str = ", ".join([f"{count} {cls}" for cls, count in frame_classes.items()])
+                        ev_msg = f"Frame {frame_idx} (t={time_s}s): Detected {len(dets)} objects ({det_summary_str}). Latency: {inf_ms}ms."
+                        if is_ped_crossing:
+                            ev_msg = f"[CRITICAL HAZARD] Frame {frame_idx} (t={time_s}s): Vulnerable road user crossing ego corridor!"
                         with self._lock:
                             job["events"].append({
                                 "timestamp": time.strftime("%H:%M:%S"),
-                                "type": "DETECTION",
-                                "message": f"Frame {frame_idx} (t={time_s}s): Detected {len(dets)} objects ({det_summary_str}). Inference: {inf_ms}ms."
+                                "type": "ALERT" if is_ped_crossing else "DETECTION",
+                                "message": ev_msg
                             })
 
                     # Map detections with track_ids
@@ -389,7 +480,7 @@ class VideoAnalysisService:
                     for d in dets:
                         d_cx = (d["bbox"][0] + d["bbox"][2]) / 2.0
                         d_cy = (d["bbox"][1] + d["bbox"][3]) / 2.0
-                        matching_track = next((t for t in tracks if t["class_name"] == d["class_name"] and abs(t["centroid"]["x"] - d_cx) < 20.0), None)
+                        matching_track = next((t for t in tracks if t["class_name"] == d["class_name"] and abs(t["centroid"]["x"] - d_cx) < 25.0), None)
                         enriched_detections.append({
                             **d,
                             "track_id": matching_track["track_id"] if matching_track else f"T{len(enriched_detections)+1}",
@@ -416,8 +507,9 @@ class VideoAnalysisService:
 
                     analyzed_count += 1
 
-                    # Update real progress
-                    pct = round((analyzed_count / float(max_sampled_frames)) * 100, 1)
+                    # Compute progress against expected frames
+                    target_total = max_frames_limit if max_frames_limit > 0 else max(1, total_frames // sample_interval)
+                    pct = round((analyzed_count / float(max(1, target_total))) * 100.0, 1)
                     with self._lock:
                         job["progress_pct"] = min(99.0, pct)
                         job["current_frame"] = frame_idx
@@ -429,6 +521,16 @@ class VideoAnalysisService:
                 frame_idx += 1
 
             cap.release()
+
+            if job.get("cancelled"):
+                with self._lock:
+                    job["status"] = "CANCELLED"
+                    job["events"].append({
+                        "timestamp": time.strftime("%H:%M:%S"),
+                        "type": "CANCELLED",
+                        "message": f"Job cancelled. Processed {analyzed_count} frames before stopping."
+                    })
+                return
 
             elapsed_total = max(0.001, time.perf_counter() - t_work_start)
             avg_inf = round(sum(inference_times) / max(1, len(inference_times)), 2)
@@ -456,7 +558,7 @@ class VideoAnalysisService:
                 job["events"].append({
                     "timestamp": time.strftime("%H:%M:%S"),
                     "type": "COMPLETED",
-                    "message": f"Video analysis complete: {analyzed_count} frames analyzed. Found {total_objs_found} total objects. Avg latency: {avg_inf} ms."
+                    "message": f"Video analysis complete: {analyzed_count} frames analyzed across full clip. Found {total_objs_found} total objects. Avg latency: {avg_inf} ms."
                 })
 
         except Exception as e:

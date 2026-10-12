@@ -38,7 +38,7 @@ class PedestrianCrossingSafetyTests(unittest.TestCase):
 
     def test_occupied_crossing_zone_maintains_stopped_state(self):
         """While the pedestrian is occupying the crossing zone, vehicle must not advance."""
-        sc = simulation_engine.get_scenario("scenario_1")
+        sc = simulation_engine.get_scenario("scenario_2") or simulation_engine.get_scenario("scenario_1")
         self.assertIsNotNone(sc)
         ped_obstacle = sc["obstacles"][0]
         self.assertEqual(ped_obstacle["type"], "pedestrian")

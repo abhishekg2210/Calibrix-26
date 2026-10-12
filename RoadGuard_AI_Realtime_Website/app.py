@@ -52,7 +52,7 @@ def home():
 def login():
     if session.get("user_id"):
         return redirect(url_for("home"))
-    demo_email = os.environ.get("DEMO_EMAIL", "admin@irie.ai")
+    demo_email = os.environ.get("DEMO_EMAIL", "admin@roadguard.ai")
     demo_password = os.environ.get("DEMO_PASSWORD", "Admin@123")
     return render_template("login.html", demo_email=demo_email, demo_password=demo_password)
 
@@ -144,10 +144,12 @@ def api_route():
     if not active_hazards and app.config.get("ROADGUARD_HAZARDS"):
         active_hazards = app.config.get("ROADGUARD_HAZARDS", [])
 
+    engine = data.get("engine", "auto")
+
     if not start or not end:
         return jsonify(ok=False, error="Please select both start and destination points on the map."), 400
 
-    res = calculate_routes(start, end, active_hazards=active_hazards)
+    res = calculate_routes(start, end, active_hazards=active_hazards, preferred_engine=engine)
     if not res.get("ok"):
         return jsonify(ok=False, error=res.get("error", "Failed to calculate route.")), 502
 
@@ -188,6 +190,19 @@ def api_route():
         traffic_live=res.get("traffic_live", False),
         note=res.get("note")
     )
+
+@app.post("/api/routes/astar")
+@login_required
+def api_routes_astar():
+    """Direct A* Road-Graph path planning endpoint."""
+    data = request.get_json(silent=True) or {}
+    start = data.get("start")
+    end = data.get("end")
+    active_hazards = data.get("hazards") if data.get("hazards") is not None else app.config.get("ROADGUARD_HAZARDS", [])
+    if not start or not end:
+        return jsonify(ok=False, error="Origin and destination coordinates required."), 400
+    res = calculate_routes(start, end, active_hazards=active_hazards, preferred_engine="astar")
+    return jsonify(res)
 
 @app.post("/api/route/reroute-request")
 @login_required

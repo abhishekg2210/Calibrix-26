@@ -3,25 +3,23 @@ import os
 import requests
 from typing import Dict, List, Optional, Tuple, Any
 
+from services.astar_planner import astar_planner, haversine_distance_m
+
 EARTH_RADIUS_KM = 6371.0
+
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate great-circle distance between two points in km."""
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (math.sin(dlat / 2) ** 2 +
-         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-         math.sin(dlon / 2) ** 2)
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return EARTH_RADIUS_KM * c
+    return haversine_distance_m(lat1, lon1, lat2, lon2) / 1000.0
+
 
 def calculate_offset_waypoints(start: Dict[str, float], end: Dict[str, float]) -> List[Dict[str, float]]:
     """
     Generate perpendicular offset waypoints from the midpoint to discover
     real alternate road branches via OSRM.
     """
-    lat1, lon1 = start['lat'], start['lng']
-    lat2, lon2 = end['lat'], end['lng']
+    lat1, lon1 = float(start['lat']), float(start['lng'])
+    lat2, lon2 = float(end['lat']), float(end['lng'])
 
     mid_lat = (lat1 + lat2) / 2.0
     mid_lon = (lon1 + lon2) / 2.0
@@ -51,7 +49,8 @@ def calculate_offset_waypoints(start: Dict[str, float], end: Dict[str, float]) -
     }
     return [offset1, offset2]
 
-def check_hazard_intersection(route_geometry: Dict[str, Any], hazard: Dict[str, Any], threshold_km: float = 0.45) -> bool:
+
+def check_hazard_intersection(route_geometry: Dict[str, Any], hazard: Dict[str, Any], threshold_km: float = 0.35) -> bool:
     """Check if any coordinate along the route polyline is close to a hazard."""
     if not hazard or not route_geometry or 'coordinates' not in route_geometry:
         return False
@@ -69,7 +68,8 @@ def check_hazard_intersection(route_geometry: Dict[str, Any], hazard: Dict[str, 
             return True
     return False
 
-def query_osrm_single(coords_str: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
+
+def query_osrm_single(coords_str: str, timeout: int = 8) -> Optional[Dict[str, Any]]:
     """Query OSRM public demo routing service."""
     url = f"https://router.project-osrm.org/route/v1/driving/{coords_str}"
     params = {
@@ -88,14 +88,96 @@ def query_osrm_single(coords_str: str, timeout: int = 10) -> Optional[Dict[str, 
         pass
     return None
 
+
+def calculate_astar_routes(
+    start: Dict[str, float],
+    end: Dict[str, float],
+    active_hazards: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
+    """
+    Genuine A* road network path planning over routable road network graph.
+    Snaps start and end coordinates to nearest network nodes and applies active hazards.
+    """
+    s_lat, s_lng = float(start["lat"]), float(start["lng"])
+    e_lat, e_lng = float(end["lat"]), float(end["lng"])
+
+    n_start = astar_planner.find_nearest_node(s_lat, s_lng)
+    n_goal = astar_planner.find_nearest_node(e_lat, e_lng)
+
+    if not n_start or not n_goal:
+        return {
+            "ok": False,
+            "error": "No road network nodes found near selected coordinates.",
+            "routes": []
+        }
+
+    # Apply hazards to road graph
+    if active_hazards:
+        astar_planner.apply_hazards(active_hazards)
+    else:
+        astar_planner.apply_hazards([])
+
+    alts = astar_planner.plan_alternatives(n_start, n_goal, k=3)
+    if not alts:
+        return {
+            "ok": False,
+            "error": "A* planner found no open traversable road corridors. Corridors may be blocked.",
+            "routes": [],
+            "all_blocked": True,
+            "unblocked_alternative_available": False
+        }
+
+    parsed_routes = []
+    for idx, r in enumerate(alts):
+        dist_km = r["distance_km"]
+        dur_min = r["duration_min"]
+        is_blocked = r.get("is_blocked", False)
+        haz_cnt = r.get("hazard_count", 0)
+
+        traffic = "ROAD BLOCKED" if is_blocked else ("Caution Advised" if haz_cnt > 0 else "Smooth Road Flow")
+        toll = "Toll-Free Arterial Corridor"
+
+        parsed_routes.append({
+            "id": idx + 1,
+            "name": f"A* Route {idx + 1}: {'Primary Road Arterial' if idx == 0 else f'Corridor Bypass {idx}'}",
+            "distance_km": dist_km,
+            "duration_min": dur_min,
+            "traffic_condition": traffic,
+            "toll_info": toll,
+            "geometry": r["geometry_geojson"],
+            "hazards": r.get("hazards", []),
+            "has_hazard": haz_cnt > 0,
+            "is_blocked": is_blocked,
+            "is_recommended": idx == 0 and not is_blocked,
+            "recommendation_reason": "Optimal risk-evaluated A* corridor" if idx == 0 else f"A* alternative (+{round(dur_min - alts[0]['duration_min'], 1)} min)",
+            "provider": "A* Road-Graph Engine"
+        })
+
+    all_blocked = all(r.get("is_blocked", False) for r in parsed_routes)
+    unblocked = any(not r.get("is_blocked", False) for r in parsed_routes)
+
+    return {
+        "ok": True,
+        "routes": parsed_routes,
+        "total_alternatives": len(parsed_routes) - 1,
+        "all_blocked": all_blocked,
+        "unblocked_alternative_available": unblocked,
+        "provider": "A* Road-Graph Engine",
+        "traffic_live": False,
+        "note": "A* graph path calculated with heuristic distance and hazard cost penalties."
+    }
+
+
 def calculate_routes(
     start: Dict[str, float],
     end: Dict[str, float],
     active_hazards: Optional[List[Dict[str, Any]]] = None,
-    hazards: Optional[List[Dict[str, Any]]] = None
+    hazards: Optional[List[Dict[str, Any]]] = None,
+    preferred_engine: str = "auto"
 ) -> Dict[str, Any]:
     """
     Calculate primary and genuine alternative routes.
+    Prefers real road network routing (OSRM / Google Routes) with automatic A* road graph fallback.
     Guarantees multiple distinct routes when physically viable.
     """
     if not start or not end:
@@ -110,13 +192,24 @@ def calculate_routes(
     if not (-90 <= s_lat <= 90 and -180 <= s_lng <= 180 and -90 <= e_lat <= 90 and -180 <= e_lng <= 180):
         return {"ok": False, "error": "Coordinates are out of geographical range."}
 
+    active_hazards = active_hazards or hazards or []
+
+    # If user explicitly requests A* graph search, use A* road graph engine
+    if preferred_engine == "astar":
+        return calculate_astar_routes(start, end, active_hazards)
+
     direct_coords = f"{s_lng:.6f},{s_lat:.6f};{e_lng:.6f},{e_lat:.6f}"
     primary_osrm_data = query_osrm_single(direct_coords)
 
+    # Fallback to authentic A* Road Graph if OSRM is unreachable or timed out
     if not primary_osrm_data:
+        astar_res = calculate_astar_routes(start, end, active_hazards)
+        if astar_res.get("ok"):
+            astar_res["note"] = "OSRM offline. Successfully routed via A* Road-Graph Engine."
+            return astar_res
         return {
             "ok": False,
-            "error": "Routing service is currently unavailable. Please verify internet connectivity and try points near a known road."
+            "error": "Routing service is currently unavailable. Please verify connectivity or pick points near known road network."
         }
 
     raw_routes = list(primary_osrm_data.get("routes", []))
@@ -126,18 +219,16 @@ def calculate_routes(
         offsets = calculate_offset_waypoints(start, end)
         for offset in offsets:
             via_coords = f"{s_lng:.6f},{s_lat:.6f};{offset['lng']:.6f},{offset['lat']:.6f};{e_lng:.6f},{e_lat:.6f}"
-            alt_data = query_osrm_single(via_coords, timeout=8)
+            alt_data = query_osrm_single(via_coords, timeout=6)
             if alt_data and alt_data.get("routes"):
                 alt_route = alt_data["routes"][0]
-                # Ensure it is genuinely distinct (different distance by at least 2% or different duration)
                 dist_diff = abs(alt_route["distance"] - raw_routes[0]["distance"])
-                if dist_diff > 250: # at least 250m difference
+                if dist_diff > 250:  # at least 250m difference
                     raw_routes.append(alt_route)
             if len(raw_routes) >= 3:
                 break
 
     parsed_routes = []
-    active_hazards = active_hazards or hazards or []
 
     for idx, r in enumerate(raw_routes):
         dist_km = round(r["distance"] / 1000.0, 2)
@@ -150,13 +241,12 @@ def calculate_routes(
                 route_hazards.append(h)
 
         has_hazard = len(route_hazards) > 0
-        # Only Construction and Road Blockages force corridor rerouting per requirements
+        # Only Construction and Road Blockages force corridor rerouting
         has_blockage = any(
             h.get("type") in ["Road Blocked", "Road closure", "Barricade", "Construction Working", "Construction"]
             for h in route_hazards
         )
 
-        # Heuristic traffic condition and toll tag for realistic Indian road context
         if idx == 0:
             name = "Route 1: Primary Highway Corridor"
             traffic = "ROAD BLOCKED (Closure Alert)" if has_blockage else ("Moderate Flow (+2 min delay)" if has_hazard else "Smooth Traffic Flow")
@@ -190,7 +280,7 @@ def calculate_routes(
             "_score": base_score
         })
 
-    # Determine recommended route based on lowest score (freedom from hazards + duration)
+    # Determine recommended route based on lowest score
     best_route = min(parsed_routes, key=lambda x: x["_score"])
     for r in parsed_routes:
         is_rec = (r["id"] == best_route["id"])
@@ -221,5 +311,5 @@ def calculate_routes(
         "unblocked_alternative_available": unblocked_alternative_available,
         "provider": "OSRM (OpenStreetMap) Driving Engine",
         "traffic_live": False,
-        "note": "Route estimates calculated. Simulated sensor & obstacle avoidance active."
+        "note": "Route estimates calculated. Dynamic corridor avoidance active."
     }

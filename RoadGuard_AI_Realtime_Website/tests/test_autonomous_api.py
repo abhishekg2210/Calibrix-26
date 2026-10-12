@@ -58,7 +58,7 @@ class AutonomousAPITests(unittest.TestCase):
         res_list = self.client.get('/api/autonomous/scenarios')
         self.assertEqual(res_list.status_code, 200)
         scenarios = res_list.get_json()['scenarios']
-        self.assertEqual(len(scenarios), 5)
+        self.assertGreaterEqual(len(scenarios), 20)
 
         res_run = self.client.post('/api/autonomous/scenarios/run', json={'scenario_id': 'scenario_1'})
         self.assertEqual(res_run.status_code, 200)

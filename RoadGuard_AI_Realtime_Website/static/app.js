@@ -208,50 +208,72 @@
             toast('ALTERNATIVE ROUTE UPDATED');
             log('ALTERNATIVE ROUTE UPDATED', `Vehicle automatically rerouted to ${openRoute.name || `Corridor ${openRouteIdx + 1}`}.`, 'green');
           } else {
-            // All existing corridors touch blockage -> dynamically construct nearby shortcut bypass road!
-            const bypassSuccess = applyDynamicObstacleAvoidance();
-            if (bypassSuccess) {
-              this.allCorridorsBlocked = false;
-              const currentRoute = state.routes[state.selected];
-              currentRoute.is_blocked = false;
+            // All existing corridors touch blockage -> query A* road-graph planner for topological bypass
+            let astarSuccess = false;
+            try {
+              const astarRes = await api('/api/routes/astar', {
+                origin: state.start,
+                destination: state.end,
+                blocked_segments: state.hazards.filter(isCorridorBlockage).map(h => ({ lat: h.lat, lng: h.lng, radius_m: 50.0 }))
+              });
 
-              if (banner) {
-                banner.hidden = false;
-                banner.className = 'dynamic-reroute-banner bypass-mode';
-                $('rerouteBannerTitle').textContent = 'ALTERNATIVE ROUTE UPDATED';
-                $('rerouteBannerSubtitle').textContent = `Blockage detected ahead. Automatically rerouted onto nearby shortcut road bypassing obstructed zone.`;
-                $('rerouteBannerBadge').textContent = 'SHORTCUT DETOUR ACTIVE';
-                if ($('retryRouteBtn')) $('retryRouteBtn').hidden = true;
-              }
+              if (astarRes.routes && astarRes.routes.length) {
+                const astarRoute = astarRes.routes[0];
+                const newCoords = routeCoords(astarRoute);
+                if (newCoords && newCoords.length >= 2) {
+                  astarSuccess = true;
+                  this.allCorridorsBlocked = false;
+                  const currentRoute = state.routes[state.selected];
+                  currentRoute.coords = newCoords;
+                  currentRoute.is_blocked = false;
+                  currentRoute.is_detoured = true;
+                  currentRoute.distance_km = astarRoute.distance_km;
+                  currentRoute.duration_min = astarRoute.duration_min;
+                  currentRoute.name = astarRoute.name || 'A* Topological Road Detour';
 
-              // Update simulation coordinates to follow shortcut road
-              if (state.demoTimer && currentRoute.coords) {
-                state.activeDemoCoords = currentRoute.coords;
-                if (state.currentPosition) {
-                  let closestIdx = 0, minD = Infinity;
-                  for (let k = 0; k < state.activeDemoCoords.length; k++) {
-                    const d = haversine(state.activeDemoCoords[k], state.currentPosition);
-                    if (d < minD) { minD = d; closestIdx = k; }
+                  drawRoutes(false);
+                  renderRoutes();
+
+                  if (banner) {
+                    banner.hidden = false;
+                    banner.className = 'dynamic-reroute-banner bypass-mode';
+                    $('rerouteBannerTitle').textContent = 'A* ROAD GRAPH REROUTE ACTIVE';
+                    $('rerouteBannerSubtitle').textContent = `Road closure avoided using A* shortest-path graph search (${astarRoute.distance_km} km).`;
+                    $('rerouteBannerBadge').textContent = 'A* GRAPH BYPASS';
+                    if ($('retryRouteBtn')) $('retryRouteBtn').hidden = true;
                   }
-                  state.demoIndex = closestIdx;
+
+                  if (state.demoTimer) {
+                    state.activeDemoCoords = newCoords;
+                    if (state.currentPosition) {
+                      let closestIdx = 0, minD = Infinity;
+                      for (let k = 0; k < newCoords.length; k++) {
+                        const d = haversine(newCoords[k], state.currentPosition);
+                        if (d < minD) { minD = d; closestIdx = k; }
+                      }
+                      state.demoIndex = closestIdx;
+                    }
+                  }
+
+                  toast('A* ROAD-GRAPH REROUTE APPLIED');
+                  log('A* Reroute Success', `Computed topological detour around blockage (${astarRoute.distance_km} km).`, 'green');
                 }
               }
+            } catch (astarErr) {
+              console.warn('A* planner fallback:', astarErr);
+            }
 
-              toast('ALTERNATIVE ROUTE UPDATED — SHORTCUT BYPASS ACTIVE');
-              log('ALTERNATIVE ROUTE UPDATED', 'Rerouted onto nearby shortcut bypass road around construction/blockage.', 'green');
-            } else {
-              this.handleAllCorridorsBlocked();
+            if (!astarSuccess) {
+              const bypassSuccess = applyDynamicObstacleAvoidance();
+              if (bypassSuccess) {
+                this.allCorridorsBlocked = false;
+              } else {
+                this.handleAllCorridorsBlocked();
+              }
             }
           }
         } else {
-          const bypassSuccess = applyDynamicObstacleAvoidance();
-          if (bypassSuccess) {
-            this.allCorridorsBlocked = false;
-            toast('ALTERNATIVE ROUTE UPDATED — SHORTCUT BYPASS ACTIVE');
-            log('ALTERNATIVE ROUTE UPDATED', 'Rerouted onto shortcut detour road.', 'green');
-          } else {
-            this.handleAllCorridorsBlocked();
-          }
+          this.handleAllCorridorsBlocked();
         }
       } catch (err) {
         log('Reroute Notice', err.message, 'amber');
@@ -1603,20 +1625,12 @@
           const hy = h.lat - bestProj.lat;
           const dot = nx * hx + ny * hy;
 
-          // Steer in opposite direction of hazard into adjacent shortcut corridor/bypass
+          // Steer in opposite direction of hazard into adjacent open lane (strictly clamped within road surface)
           const steerSign = dot >= 0 ? -1 : 1;
 
-          let lateralOffsetDeg = 0.00028; // ~31 meters shortcut road
-          if (h.type === 'Construction Working') {
-            lateralOffsetDeg = 0.00036; // ~40 meters shortcut bypass road
-            maxClearanceMeters = 40.0;
-          } else if (h.type === 'Road Blocked') {
-            lateralOffsetDeg = 0.00045; // ~50 meters shortcut bypass road
-            maxClearanceMeters = 50.0;
-          } else {
-            lateralOffsetDeg = 0.00015; // ~16 meters
-            maxClearanceMeters = 16.0;
-          }
+          // Clamped in-lane evasion offset: 0.000018 deg is ~2.0m (stays strictly within asphalt road pavement)
+          let lateralOffsetDeg = 0.000018; 
+          maxClearanceMeters = 2.0;
 
           // Capture the exact obstructed span for red warning visualization
           const spanDeg = 0.00040; // ~45m along roadway

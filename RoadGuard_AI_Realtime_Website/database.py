@@ -83,18 +83,23 @@ def init_db():
     ''')
 
     # Seed default demo administrator account
-    demo_email = os.environ.get('DEMO_EMAIL', 'admin@irie.ai')
+    demo_email = os.environ.get('DEMO_EMAIL', 'admin@roadguard.ai')
     demo_password = os.environ.get('DEMO_PASSWORD', 'Admin@123')
-    demo_name = os.environ.get('DEMO_NAME', 'IRIE Fleet Commander')
+    demo_name = os.environ.get('DEMO_NAME', 'RoadGuard Mission Lead')
 
     cursor.execute('SELECT id FROM users WHERE email = ?', (demo_email,))
     existing_user = cursor.fetchone()
     if not existing_user:
         hashed = generate_password_hash(demo_password)
-        cursor.execute('''
-            INSERT INTO users (username, email, password_hash, full_name, role)
-            VALUES (?, ?, ?, ?, ?)
-        ''', ('admin', demo_email, hashed, demo_name, 'admin'))
+        try:
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash, full_name, role)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('admin', demo_email, hashed, demo_name, 'admin'))
+        except sqlite3.IntegrityError:
+            cursor.execute('''
+                UPDATE users SET email = ?, full_name = ? WHERE username = 'admin'
+            ''', (demo_email, demo_name))
 
     # Seed sample initial alert if empty
     cursor.execute('SELECT COUNT(*) as cnt FROM alerts')

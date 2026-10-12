@@ -25,10 +25,17 @@ class IndianRoadPerceptionEngine:
     """
 
     CLASS_MAPPINGS = {
+        # KITTI Autonomous Driving Classes (Faris Agour YOLOv8m Enhanced)
+        "car": "Vehicle",
+        "van": "Vehicle",
+        "truck": "Vehicle",
+        "pedestrian": "Pedestrian",
+        "person_sitting": "Pedestrian",
+        "cyclist": "Motorcycle/bicycle",
+        "tram": "Vehicle",
+        "misc": "Obstacle",
         # COCO mapped classes
         "person": "Pedestrian",
-        "car": "Vehicle",
-        "truck": "Vehicle",
         "bus": "Vehicle",
         "motorcycle": "Motorcycle/bicycle",
         "bicycle": "Motorcycle/bicycle",
@@ -50,15 +57,16 @@ class IndianRoadPerceptionEngine:
     }
 
     TAXONOMY_INFO = {
-        "Vehicle": {"color": (0, 165, 255), "hex": "#00a5ff", "category": "Core Transport", "source": "COCO Pre-trained / Fine-tuned"},
-        "Motorcycle/bicycle": {"color": (255, 191, 0), "hex": "#ffbf00", "category": "Vulnerable Road User", "source": "COCO Pre-trained"},
-        "Pedestrian": {"color": (0, 255, 0), "hex": "#00ff00", "category": "Vulnerable Road User", "source": "COCO Pre-trained"},
+        "Vehicle": {"color": (0, 165, 255), "hex": "#00a5ff", "category": "Core Transport", "source": "YOLO Autonomous Vehicles"},
+        "Motorcycle/bicycle": {"color": (255, 191, 0), "hex": "#ffbf00", "category": "Vulnerable Road User", "source": "YOLO Autonomous Vehicles"},
+        "Pedestrian": {"color": (0, 255, 0), "hex": "#00ff00", "category": "Vulnerable Road User", "source": "YOLO Autonomous Vehicles"},
         "Dog/cattle": {"color": (255, 105, 180), "hex": "#ff69b4", "category": "Animal Crossing", "source": "COCO Animals (Dog/Cow)"},
-        "Traffic Light": {"color": (0, 255, 255), "hex": "#00ffff", "category": "Traffic Control", "source": "COCO Pre-trained"},
-        "Traffic Sign": {"color": (255, 215, 0), "hex": "#ffd700", "category": "Traffic Control", "source": "COCO Pre-trained"},
-        "Ambulance / Emergency Vehicle": {"color": (0, 0, 255), "hex": "#ff3b30", "category": "Priority Emergency", "source": "COCO Priority Vehicle"},
+        "Traffic Light": {"color": (0, 255, 255), "hex": "#00ffff", "category": "Traffic Control", "source": "Traffic Perception"},
+        "Traffic Sign": {"color": (255, 215, 0), "hex": "#ffd700", "category": "Traffic Control", "source": "Traffic Perception"},
+        "Ambulance / Emergency Vehicle": {"color": (0, 0, 255), "hex": "#ff3b30", "category": "Priority Emergency", "source": "Priority Vehicle"},
         "Pothole": {"color": (0, 0, 255), "hex": "#ff3333", "category": "Road Surface Damage", "source": "Custom Model (Annotation Required)"},
-        "Construction barrier/road blockage": {"color": (255, 0, 255), "hex": "#ff00ff", "category": "Infrastructure Hazard", "source": "Custom Model (Annotation Required)"}
+        "Construction barrier/road blockage": {"color": (255, 0, 255), "hex": "#ff00ff", "category": "Infrastructure Hazard", "source": "Custom Model (Annotation Required)"},
+        "Obstacle": {"color": (255, 165, 0), "hex": "#ffa500", "category": "Road Hazard", "source": "Autonomous Vehicles Model"}
     }
 
     def __init__(self, models_dir: Optional[str] = None):
@@ -69,30 +77,48 @@ class IndianRoadPerceptionEngine:
         self.model_status_text = "Not loaded"
         self.model_configured = False
         self.confidence_threshold = 0.35
+        self.active_model_path = ""
         self.init_engine()
 
-    def init_engine(self):
-        """Initializes YOLO if weights are available. If unavailable, flags as NOT_CONFIGURED with setup guidance."""
+    def init_engine(self, custom_path: Optional[str] = None):
+        """Initializes YOLO if weights are available. Prioritizes Faris Agour YOLOv8m KITTI model."""
         try:
             from ultralytics import YOLO
+            best_weights = os.path.join(self.models_dir, "best.pt")
+            kitti_weights = os.path.join(self.models_dir, "yolov8m_kitti_enhanced.pt")
             custom_weights = os.path.join(self.models_dir, "indian_roads_yolo.pt")
             default_weights = os.path.join(self.models_dir, "yolov8n.pt")
             root_weights = os.path.join(os.path.dirname(os.path.dirname(__file__)), "yolov8n.pt")
 
-            if os.path.exists(custom_weights):
-                self.model = YOLO(custom_weights)
+            target_weights = None
+            if custom_path and os.path.exists(custom_path):
+                target_weights = custom_path
+                self.model_type = "YOLO_CUSTOM_TRAINED"
+                self.model_status_text = f"Custom Trained YOLO Model Active ({os.path.basename(custom_path)})"
+            elif os.path.exists(best_weights):
+                target_weights = best_weights
+                self.model_type = "YOLO_KITTI_AUTONOMOUS_VEHICLES"
+                self.model_status_text = "Faris Agour YOLOv8m KITTI Autonomous Model Active (mAP@0.5: 90.6%)"
+            elif os.path.exists(kitti_weights):
+                target_weights = kitti_weights
+                self.model_type = "YOLO_KITTI_AUTONOMOUS_VEHICLES"
+                self.model_status_text = "Faris Agour YOLOv8m KITTI Autonomous Model Active (mAP@0.5: 90.6%)"
+            elif os.path.exists(custom_weights):
+                target_weights = custom_weights
                 self.model_type = "YOLO_INDIAN_ROADS_CUSTOM"
                 self.model_status_text = "Custom Indian Roads YOLO Model Loaded"
-                self.model_configured = True
             elif os.path.exists(default_weights):
-                self.model = YOLO(default_weights)
+                target_weights = default_weights
                 self.model_type = "YOLO_PRETRAINED_COCO"
                 self.model_status_text = "Pretrained YOLOv8n Model Loaded"
-                self.model_configured = True
             elif os.path.exists(root_weights):
-                self.model = YOLO(root_weights)
+                target_weights = root_weights
                 self.model_type = "YOLO_PRETRAINED_COCO"
                 self.model_status_text = "Pretrained YOLOv8n Model Active"
+
+            if target_weights:
+                self.model = YOLO(target_weights)
+                self.active_model_path = target_weights
                 self.model_configured = True
             else:
                 try:
@@ -115,6 +141,11 @@ class IndianRoadPerceptionEngine:
             self.model_type = "NOT_CONFIGURED"
             self.model_status_text = f"Failed to initialize perception model: {e}"
             self.model_configured = False
+
+    def reload_model(self, model_path: Optional[str] = None):
+        """Reloads perception model dynamically after training."""
+        self.init_engine(custom_path=model_path)
+        return self.get_status()
 
     def get_status(self) -> Dict[str, Any]:
         return {

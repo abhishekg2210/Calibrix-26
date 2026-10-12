@@ -602,9 +602,10 @@
    ========================================================================== */
 .camera-rig-grid {
   display: grid;
-  grid-template-columns: 2.2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 18px;
   margin-bottom: 22px;
+  width: 100%;
 }
 
 .camera-feed-card {
@@ -1090,5 +1091,211 @@
   margin-top: 6px;
   display: inline-block;
 }
+
+/* ==========================================================================
+   MODEL TRAINING CONSOLE & MODAL STYLES (FARIS AGOUR PIPELINE)
+   ========================================================================== */
+.deck-btn.train-btn {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  color: #c7d2fe;
+  border: 1px solid #4f46e5;
+  box-shadow: 0 0 15px rgba(79, 70, 229, 0.25);
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.deck-btn.train-btn:hover {
+  background: linear-gradient(135deg, #312e81, #4338ca);
+  color: #fff;
+  border-color: #6366f1;
+  box-shadow: 0 0 22px rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
+}
+
+.train-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(3, 7, 5, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.train-modal-card {
+  background: #090e0b;
+  border: 1px solid rgba(0, 229, 155, 0.3);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(0, 229, 155, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.train-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b1410;
+}
+
+.train-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #00e59b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.train-modal-close {
+  background: none;
+  border: none;
+  color: #7b9987;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.train-modal-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.train-modal-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.train-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.train-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.train-field-group label {
+  font: 11px 'DM Mono', monospace;
+  color: #8da496;
+  text-transform: uppercase;
+}
+
+.train-field-group select,
+.train-field-group input {
+  background: #050a07;
+  border: 1px solid #162c20;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #e2f7eb;
+  font: 12px 'DM Mono', monospace;
+  outline: none;
+}
+
+.train-field-group select:focus,
+.train-field-group input:focus {
+  border-color: #00e59b;
+}
+
+.train-pipeline-badge {
+  background: rgba(49, 46, 129, 0.35);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font: 11px 'DM Mono', monospace;
+  color: #c7d2fe;
+}
+
+.train-progress-bar-container {
+  background: #050a07;
+  border: 1px solid #162c20;
+  border-radius: 8px;
+  height: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.train-progress-bar-fill {
+  background: linear-gradient(90deg, #00e59b, #38bdf8);
+  height: 100%;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.train-progress-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 10px 'DM Mono', monospace;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.train-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 11px 'DM Mono', monospace;
+}
+
+.train-metrics-table th,
+.train-metrics-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid #14241a;
+}
+
+.train-metrics-table th {
+  color: #7b9987;
+  font-weight: 600;
+}
+
+.train-metrics-table td {
+  color: #00e59b;
+}
+
+.train-logs-box {
+  background: #030604;
+  border: 1px solid #12241a;
+  border-radius: 6px;
+  padding: 10px;
+  font: 10px 'DM Mono', monospace;
+  color: #8da496;
+  max-height: 110px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.train-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b1410;
+}
+
 
 
