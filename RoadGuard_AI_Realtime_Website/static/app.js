@@ -325,13 +325,34 @@
   }
 
   async function handleMapClick(e) {
-    const lat = e.latlng.lat;
-    const lng = e.latlng.lng;
+    let lat = e.latlng.lat;
+    let lng = e.latlng.lng;
 
-    // 1. If currently in entity placement mode, insert the hazard/entity
+    // 1. If currently in entity placement mode, snap accurately to nearest road corridor point
     if (state.placementMode) {
       const type = state.placementMode;
       cancelPlacementMode();
+
+      // Snap accurately onto active route if clicked within 150m of roadway corridor
+      if (state.routes.length && state.routes[state.selected]) {
+        const coords = (state.routes[state.selected]._originalCoords && state.routes[state.selected]._originalCoords.length)
+          ? state.routes[state.selected]._originalCoords
+          : routeCoords(state.routes[state.selected]);
+        let minD = Infinity;
+        let snapPoint = null;
+        for (let i = 0; i < coords.length - 1; i++) {
+          const res = pointToSegmentDistance({ lat, lng }, coords[i], coords[i + 1]);
+          if (res.distKm < minD) {
+            minD = res.distKm;
+            snapPoint = res.proj;
+          }
+        }
+        if (minD < 0.15 && snapPoint) {
+          lat = snapPoint.lat;
+          lng = snapPoint.lng;
+        }
+      }
+
       await insertHazard(type, lat, lng);
       return;
     }
@@ -862,7 +883,7 @@
     }
   }
 
-  function drawRoutes() {
+  function drawRoutes(fitBounds = false) {
     state.routeLayers.forEach(layer => {
       try { state.map.removeLayer(layer); } catch {}
     });
@@ -891,20 +912,20 @@
         dashArray: route.is_blocked ? '8 8' : (selected ? null : '6 6')
       }).addTo(state.map);
 
-      line.on('click', () => selectRoute(i));
+      line.on('click', () => selectRoute(i, false));
       state.routeLayers.push(line);
     });
 
-    if (state.routeLayers.length) {
+    if (state.routeLayers.length && fitBounds) {
       const group = L.featureGroup(state.routeLayers);
       state.map.fitBounds(group.getBounds().pad(0.12));
     }
   }
 
-  function selectRoute(i) {
+  function selectRoute(i, fitBounds = false) {
     if (!state.routes[i]) return;
     state.selected = i;
-    drawRoutes();
+    drawRoutes(fitBounds);
     renderRoutes();
 
     const r = state.routes[i];
@@ -1004,9 +1025,9 @@
       const recIdx = state.routes.findIndex(r => r.is_recommended);
       state.selected = recIdx >= 0 ? recIdx : 0;
 
-      drawRoutes();
+      drawRoutes(true);
       renderRoutes();
-      selectRoute(state.selected);
+      selectRoute(state.selected, false);
       setStatus('ROUTE READY');
       $('routingModeTag').textContent = 'ROUTE READY';
     } catch (err) {
@@ -1113,14 +1134,14 @@
         rerouteBanner.hidden = true;
       }
 
-      drawRoutes();
+      drawRoutes(false);
       renderRoutes();
       return false;
     }
 
-    let detouredCoords = [...baseCoords];
+    let detouredCoords = baseCoords.map(c => ({ lat: c.lat, lng: c.lng }));
     let blockedSegments = [];
-    let maxOffsetDist = 0.00095;
+    let maxClearanceMeters = 8.0;
 
     hits.forEach(h => {
       // Find closest segment on detouredCoords to this hazard
@@ -1137,9 +1158,9 @@
         }
       }
 
-      const thresholdKm = (h.type === 'Construction Working') ? 0.16 : ((h.type === 'Road Blocked') ? 0.13 : 0.09);
+      const thresholdKm = (h.type === 'Construction Working') ? 0.08 : ((h.type === 'Road Blocked') ? 0.07 : 0.05);
 
-      if (bestSegmentIdx >= 0 && minDistanceKm <= thresholdKm) {
+      if (bestSegmentIdx >= 0 && minDistanceKm <= thresholdKm && bestProj) {
         const pA = detouredCoords[bestSegmentIdx];
         const pB = detouredCoords[bestSegmentIdx + 1];
 
@@ -1155,63 +1176,45 @@
           const nx = -ty;
           const ny = tx;
 
-          // Determine which side the hazard is on relative to the road
+          // Determine which side the hazard is on relative to the road centerline
           const hx = h.lng - bestProj.lng;
           const hy = h.lat - bestProj.lat;
           const dot = nx * hx + ny * hy;
 
-          // Steer in opposite direction of hazard to maintain safe perimeter
-          let steerSign = 1;
-          if (dot > 0.000005) steerSign = -1;
-          else if (dot < -0.000005) steerSign = 1;
-          else steerSign = 1; // Center obstacle: veer right
+          // Steer in opposite direction of hazard into adjacent open lane/shoulder
+          const steerSign = dot >= 0 ? -1 : 1;
 
-          // Lateral clearance distance
-          let offsetDist = 0.00085; // ~85m for general obstacle
-          if (h.type === 'Construction Working') offsetDist = 0.00135; // ~135m for construction work zone
-          else if (h.type === 'Road Blocked') offsetDist = 0.00175;     // ~175m for road blocked
-          else if (h.type === 'Pedestrian Moving') offsetDist = 0.00075; // ~75m for moving pedestrian
+          // Realistic lateral lane bypass in degrees (~6m to 9m on roadway)
+          let lateralOffsetDeg = 0.000065; // ~7.2 meters
+          if (h.type === 'Construction Working') {
+            lateralOffsetDeg = 0.000080; // ~8.9 meters
+            maxClearanceMeters = 8.9;
+          } else if (h.type === 'Road Blocked') {
+            lateralOffsetDeg = 0.000090; // ~10.0 meters
+            maxClearanceMeters = 10.0;
+          } else {
+            lateralOffsetDeg = 0.000055; // ~6.1 meters
+            maxClearanceMeters = 6.1;
+          }
 
-          if (offsetDist > maxOffsetDist) maxOffsetDist = offsetDist;
-
-          // Transition start and end along the road (~90m before and after)
-          const spanDist = Math.max(len * 0.7, 0.0009);
-          const pEntry = {
-            lat: bestProj.lat - ty * spanDist,
-            lng: bestProj.lng - tx * spanDist
-          };
-          const pExit = {
-            lat: bestProj.lat + ty * spanDist,
-            lng: bestProj.lng + tx * spanDist
-          };
-
-          // Capture original obstructed roadway section for red warning display
+          // Capture the exact obstructed 25m span for red warning visualization
+          const spanDeg = 0.00028; // ~30m along roadway
+          const pEntry = { lat: bestProj.lat - ty * spanDeg, lng: bestProj.lng - tx * spanDeg };
+          const pExit = { lat: bestProj.lat + ty * spanDeg, lng: bestProj.lng + tx * spanDeg };
           blockedSegments.push([pEntry, bestProj, pExit]);
 
-          // Compute smooth 5-point avoidance arc around obstacle
-          const arc1 = {
-            lat: pEntry.lat + (bestProj.lat - pEntry.lat) * 0.6 + ny * offsetDist * 0.55 * steerSign,
-            lng: pEntry.lng + (bestProj.lng - pEntry.lng) * 0.6 + nx * offsetDist * 0.55 * steerSign
-          };
-          const arcApex = {
-            lat: bestProj.lat + ny * offsetDist * 1.25 * steerSign,
-            lng: bestProj.lng + nx * offsetDist * 1.25 * steerSign
-          };
-          const arc2 = {
-            lat: bestProj.lat + (pExit.lat - bestProj.lat) * 0.4 + ny * offsetDist * 0.55 * steerSign,
-            lng: bestProj.lng + (pExit.lng - bestProj.lng) * 0.4 + nx * offsetDist * 0.55 * steerSign
-          };
-
-          // Splice smooth detour waypoints into route polyline
-          detouredCoords = [
-            ...detouredCoords.slice(0, bestSegmentIdx + 1),
-            pEntry,
-            arc1,
-            arcApex,
-            arc2,
-            pExit,
-            ...detouredCoords.slice(bestSegmentIdx + 1)
-          ];
+          // Smoothly deflect vertices within influence zone using a Gaussian bell curve
+          const influenceRadiusKm = 0.035; // 35 meters along road
+          for (let k = 0; k < detouredCoords.length; k++) {
+            const ptDistKm = haversine(detouredCoords[k], bestProj);
+            if (ptDistKm < influenceRadiusKm) {
+              const u = ptDistKm / influenceRadiusKm;
+              // Smooth bell curve envelope: 1 at center, tapering smoothly to 0 at edges
+              const bellFactor = Math.cos(u * Math.PI * 0.5) ** 2;
+              detouredCoords[k].lat += ny * lateralOffsetDeg * bellFactor * steerSign;
+              detouredCoords[k].lng += nx * lateralOffsetDeg * bellFactor * steerSign;
+            }
+          }
         }
       }
     });
@@ -1224,7 +1227,7 @@
       coordinates: detouredCoords.map(c => [c.lng, c.lat])
     };
 
-    // Draw red dashed line for the obstructed/avoided road section
+    // Draw red dashed line for the obstructed roadway section
     if (state.blockedSegmentLayer && state.map) {
       state.map.removeLayer(state.blockedSegmentLayer);
     }
@@ -1235,7 +1238,7 @@
         weight: 5,
         opacity: 0.9,
         dashArray: '6 8'
-      }).addTo(state.map).bindTooltip('⚠️ Obstructed corridor: Avoided by dynamic vehicle detour', { sticky: true });
+      }).addTo(state.map).bindTooltip('⚠️ Obstructed lane: Vehicle steered into adjacent lane', { sticky: true });
     }
 
     // Show dynamic reroute banner
@@ -1244,12 +1247,12 @@
       rerouteBanner.classList.remove('blocked-mode');
       $('rerouteBannerTitle').textContent = 'DYNAMIC REROUTE ACTIVE';
       const names = hits.map(h => h.type).join(', ');
-      $('rerouteBannerSubtitle').textContent = `Vehicle path altered: Steering safely around ${names} (+${Math.round(maxOffsetDist * 100000)}m clearance)`;
+      $('rerouteBannerSubtitle').textContent = `Vehicle path altered: Steering safely around ${names} (+${maxClearanceMeters.toFixed(1)}m lateral lane clearance)`;
       $('rerouteBannerBadge').textContent = 'SAFE BYPASS';
     }
 
-    // Redraw active route with updated avoidance curve
-    drawRoutes();
+    // Redraw active route WITHOUT changing map zoom or viewport bounds
+    drawRoutes(false);
     renderRoutes();
 
     // Update active demo drive coordinates if driving
@@ -1415,21 +1418,27 @@
           targetSpeed = 42;
         }
       } else if (nearHazard) {
-        if (nearHazard.type === 'Road Blocked') {
-          targetSpeed = 0;
-          $('vehicleHealth').textContent = 'ROAD BLOCKED';
-          $('vehicleHealth').style.color = 'var(--red)';
+        // Vehicle passing nearby or stationary road feature:
+        // THE VEHICLE DOES NOT STOP! IT REMAINS IN TRAVELLING MODE!
+        if (nearHazard.type === 'Vehicle' || nearHazard.type === 'Motorcycle' || nearHazard.type === 'Slow Vehicle') {
+          targetSpeed = 40; // Cruising along route, maintaining safe clearance!
+          $('vehicleHealth').textContent = 'TRAVELLING (PASSING NEARBY VEHICLE)';
+          $('vehicleHealth').style.color = 'var(--green)';
+        } else if (nearHazard.type === 'Road Blocked') {
+          targetSpeed = 18; // Safe bypass speed
+          $('vehicleHealth').textContent = 'TRAVELLING (BYPASS CORRIDOR 18 km/h)';
+          $('vehicleHealth').style.color = 'var(--amber)';
         } else if (nearHazard.type === 'Construction Working') {
-          targetSpeed = 20;
-          $('vehicleHealth').textContent = 'WORK ZONE (20 km/h)';
+          targetSpeed = 26; // Work zone caution cruise
+          $('vehicleHealth').textContent = 'TRAVELLING (WORK ZONE 26 km/h)';
           $('vehicleHealth').style.color = 'var(--amber)';
         } else {
-          targetSpeed = 24;
-          $('vehicleHealth').textContent = 'AVOIDING OBSTACLE';
-          $('vehicleHealth').style.color = 'var(--amber)';
+          targetSpeed = 38; // Cruising past obstacle
+          $('vehicleHealth').textContent = 'TRAVELLING (SAFE CLEARANCE)';
+          $('vehicleHealth').style.color = 'var(--green)';
         }
       } else {
-        $('vehicleHealth').textContent = state.routes[state.selected]?.is_detoured ? 'DETOUR GUIDANCE' : 'MOVING (AUTONOMOUS)';
+        $('vehicleHealth').textContent = state.routes[state.selected]?.is_detoured ? 'DETOUR GUIDANCE (42 km/h)' : 'MOVING (AUTONOMOUS 42 km/h)';
         $('vehicleHealth').style.color = 'var(--green)';
       }
 

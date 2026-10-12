@@ -415,6 +415,13 @@
       cancelAnimationFrame(simState.animId);
       simState.animId = null;
     }
+    // Kickstart velocity if vehicle was stopped
+    if (simState.ego.v < 0.5 && simState.yieldState !== 'WAITING_FOR_CLEARANCE') {
+      const nominalV = (SCENARIOS[simState.scenarioId] && SCENARIOS[simState.scenarioId].egoStart) ? SCENARIOS[simState.scenarioId].egoStart.v : 8.5;
+      simState.ego.target_v = nominalV;
+      simState.ego.a = 2.2;
+      simState.yieldState = 'CRUISE';
+    }
     simState.running = true;
     updatePlayPauseButton();
     lastFrameTime = performance.now();
@@ -448,12 +455,14 @@
     const newId = `${type.substring(0, 3).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
 
     const obsProps = {
-      pedestrian: { name: 'Crossing Pedestrian', vx: -0.1, vy: -1.3, radius_m: 0.7, color: '#fb7185', behavior: 'cross_and_clear' },
-      motorcycle: { name: 'Merging Two-Wheeler', vx: 3.8, vy: 0.9, radius_m: 1.1, color: '#38bdf8', behavior: 'merge_diagonal' },
-      auto_rickshaw: { name: 'Slow Auto-Rickshaw', vx: 2.2, vy: 0.0, radius_m: 1.4, color: '#facc15', behavior: 'move_forward' },
-      pothole: { name: 'Road Defect / Pothole', vx: 0.0, vy: 0.0, radius_m: 1.3, color: '#f59e0b', behavior: 'static' },
-      cattle: { name: 'Stray Cattle', vx: -0.05, vy: -0.65, radius_m: 1.6, color: '#a78bfa', behavior: 'cross_and_clear' },
-      blockade: { name: 'Road Blockade', vx: 0.0, vy: 0.0, radius_m: 1.8, color: '#f97316', behavior: 'static' }
+      pedestrian: { name: 'Crossing Pedestrian', vx: -0.15, vy: -1.3, radius_m: 0.75, color: '#fb7185', behavior: 'cross_and_clear' },
+      dog: { name: 'Stray Dog', vx: -0.1, vy: -0.9, radius_m: 0.85, color: '#ff9100', behavior: 'cross_and_clear' },
+      cattle: { name: 'Stray Cattle', vx: -0.05, vy: -0.7, radius_m: 1.5, color: '#a78bfa', behavior: 'cross_and_clear' },
+      construction: { name: 'Construction Work Zone', vx: 0.0, vy: 0.0, radius_m: 1.8, color: '#f97316', behavior: 'static' },
+      pothole: { name: 'Road Defect / Pothole', vx: 0.0, vy: 0.0, radius_m: 1.2, color: '#f59e0b', behavior: 'static' },
+      blockade: { name: 'Road Blockade', vx: 0.0, vy: 0.0, radius_m: 1.8, color: '#ef4444', behavior: 'static' },
+      motorcycle: { name: 'Passing Motorcycle', vx: 4.5, vy: 0.0, radius_m: 1.1, color: '#38bdf8', behavior: 'move_forward' },
+      auto_rickshaw: { name: 'Auto-Rickshaw', vx: 3.2, vy: 0.0, radius_m: 1.4, color: '#facc15', behavior: 'move_forward' }
     };
 
     const prop = obsProps[type] || obsProps.pedestrian;
@@ -482,8 +491,9 @@
 
     const w = rect.width;
     const centerY = rect.height / 2.0;
+    const scale = simState.road.scale;
     const egoPxX = w * 0.22;
-    const egoPxY = centerY - simState.ego.y * simState.road.scale;
+    const egoPxY = centerY - simState.ego.y * scale;
 
     // Direct touch/click on or near vehicle toggles Drive / Pause!
     if (Math.hypot(clickPxX - egoPxX, clickPxY - egoPxY) < 55) {
@@ -492,25 +502,92 @@
       return;
     }
 
-    const meterX = (clickPxX - simState.road.viewOffsetX) / simState.road.scale + simState.ego.x - 18.0;
-    const meterY = -(clickPxY - centerY) / simState.road.scale;
+    // Exact inverse mapping from canvas pixel coordinates to world coordinates (in meters)
+    const originPxX = w * 0.22 - simState.ego.x * scale;
+    const meterX = (clickPxX - originPxX) / scale;
+    const meterY = (centerY - clickPxY) / scale;
 
-    if (Math.abs(meterY) <= simState.road.width_m / 2.0 + 1.5 && meterX > 0 && meterX < simState.road.length_m) {
+    if (Math.abs(meterY) <= simState.road.width_m / 2.0 + 2.0 && meterX > 0 && meterX < simState.road.length_m) {
       const typeSelect = document.getElementById('simObstacleTypeSelect');
-      const type = typeSelect ? typeSelect.value : 'pothole';
-      const newId = `MAN-${Math.floor(Math.random() * 900 + 100)}`;
+      const type = typeSelect ? typeSelect.value : 'pedestrian';
+      const newId = `${type.toUpperCase().substring(0, 3)}-${Math.floor(Math.random() * 900 + 100)}`;
+
+      let prop = {
+        name: `Interactive ${type}`,
+        vx: 0.0,
+        vy: 0.0,
+        radius_m: 1.2,
+        color: '#f59e0b',
+        behavior: 'static'
+      };
+
+      if (type === 'pedestrian') {
+        prop = {
+          name: 'Crossing Pedestrian',
+          vx: -0.15,
+          vy: meterY >= 0 ? -1.3 : 1.3,
+          radius_m: 0.75,
+          color: '#fb7185',
+          behavior: 'cross_and_clear'
+        };
+      } else if (type === 'dog') {
+        prop = {
+          name: 'Stray Dog',
+          vx: -0.1,
+          vy: meterY >= 0 ? -0.9 : 0.9,
+          radius_m: 0.85,
+          color: '#ff9100',
+          behavior: 'cross_and_clear'
+        };
+      } else if (type === 'cattle') {
+        prop = {
+          name: 'Stray Cattle',
+          vx: -0.05,
+          vy: meterY >= 0 ? -0.7 : 0.7,
+          radius_m: 1.5,
+          color: '#a78bfa',
+          behavior: 'cross_and_clear'
+        };
+      } else if (type === 'construction' || type === 'blockade') {
+        prop = {
+          name: type === 'construction' ? 'Construction Zone' : 'Road Blockade',
+          vx: 0.0,
+          vy: 0.0,
+          radius_m: 1.8,
+          color: type === 'construction' ? '#f97316' : '#ef4444',
+          behavior: 'static'
+        };
+      } else if (type === 'motorcycle' || type === 'auto_rickshaw') {
+        prop = {
+          name: type === 'motorcycle' ? 'Passing Motorcycle' : 'Auto-Rickshaw',
+          vx: type === 'motorcycle' ? 4.5 : 3.2,
+          vy: 0.0,
+          radius_m: 1.2,
+          color: type === 'motorcycle' ? '#38bdf8' : '#facc15',
+          behavior: 'move_forward'
+        };
+      } else if (type === 'pothole') {
+        prop = {
+          name: 'Road Pothole',
+          vx: 0.0,
+          vy: 0.0,
+          radius_m: 1.2,
+          color: '#f59e0b',
+          behavior: 'static'
+        };
+      }
 
       simState.obstacles.push({
         id: newId,
         type: type,
-        name: `Interactive ${type}`,
+        name: prop.name,
         x: Math.round(meterX * 10) / 10,
         y: Math.round(meterY * 10) / 10,
-        vx: 0.0,
-        vy: 0.0,
-        radius_m: type === 'pothole' ? 1.2 : 1.5,
-        color: '#f59e0b',
-        behavior: 'static',
+        vx: prop.vx,
+        vy: prop.vy,
+        radius_m: prop.radius_m,
+        color: prop.color,
+        behavior: prop.behavior,
         hasCleared: false
       });
 
@@ -710,14 +787,15 @@
         simState.candidatePaths = [{ targetLat: 0.0, path: yieldPath, isFeasible: true, minObsDist: distToCrossing, cost: 5.0 }];
         return;
       }
-    } else if (simState.yieldState === 'WAITING_FOR_CLEARANCE') {
+    } else if (simState.yieldState === 'WAITING_FOR_CLEARANCE' || simState.yieldState === 'YIELD_DECEL') {
       // Actor has cleared! Corridor is free again!
       simState.yieldWaitTimer += dt;
       simState.yieldState = 'RESUMING';
       simState.activeDecision = 'RESUMING_CRUISE';
       simState.riskLevel = 'LOW';
       simState.decisionExplanation = `CORRIDOR CLEARED: Pedestrian/animal has safely reached roadside. Resuming nominal travel along original route.`;
-      ego.target_v = SCENARIOS[simState.scenarioId].egoStart.v;
+      const nominalSpeed = (SCENARIOS[simState.scenarioId] && SCENARIOS[simState.scenarioId].egoStart) ? SCENARIOS[simState.scenarioId].egoStart.v : 8.5;
+      ego.target_v = nominalSpeed;
       ego.a = 2.4; // Accelerate back to cruise speed
     } else if (simState.yieldState === 'RESUMING') {
       if (ego.v >= ego.target_v - 0.5) {
@@ -726,15 +804,18 @@
     }
 
     // ------------------------------------------------------------------------
-    // CANDIDATE TRAJECTORY LATTICE EVALUATION (CASE 2, 3, 5)
+    // CANDIDATE TRAJECTORY LATTICE EVALUATION (CASE 2, 3, 5 + INTERACTIVE)
     // ------------------------------------------------------------------------
-    const lateralOffsets = [0.0, 1.5, 2.4, -1.5, -2.4];
+    // 13 fine-grained candidate lateral offsets across roadway
+    const lateralOffsets = [0.0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.2, -2.2, 2.7, -2.7, 3.2, -3.2];
     const candidatePaths = [];
     let bestPath = null;
     let minCost = 999999.0;
+    let maxClearanceCandidate = null;
+    let maxClearance = -1.0;
 
     lateralOffsets.forEach(targetLat => {
-      if (Math.abs(targetLat) > (simState.road.width_m / 2.0 - 0.4)) return;
+      if (Math.abs(targetLat) > (simState.road.width_m / 2.0 - 0.35)) return;
 
       const path = [];
       let pathMinObsDist = 999.0;
@@ -756,7 +837,7 @@
           if (d < pathMinObsDist) pathMinObsDist = d;
 
           // Collision clearance threshold
-          if (d < (obs.radius_m + 1.1)) {
+          if (d < (obs.radius_m + 1.05)) {
             isFeasible = false;
           }
         }
@@ -764,10 +845,10 @@
         path.push({ x: px, y: py });
       }
 
-      // Cost function
-      const latCost = Math.abs(targetLat) * 1.5;
+      // Cost function: penalize large deviations from lane center and proximity to hazards
+      const latCost = Math.abs(targetLat) * 1.2;
       const obsCost = 30.0 / Math.max(0.6, pathMinObsDist);
-      const smoothnessCost = Math.abs(targetLat - ego.target_lat) * 2.0;
+      const smoothnessCost = Math.abs(targetLat - ego.target_lat) * 1.8;
       const totalCost = latCost + obsCost + smoothnessCost;
 
       const candidate = {
@@ -779,6 +860,11 @@
       };
 
       candidatePaths.push(candidate);
+
+      if (pathMinObsDist > maxClearance) {
+        maxClearance = pathMinObsDist;
+        maxClearanceCandidate = candidate;
+      }
 
       if (isFeasible && totalCost < minCost) {
         minCost = totalCost;
@@ -800,11 +886,25 @@
 
     // Adaptive Decision Selection
     if (!bestPath) {
-      simState.activeDecision = 'EMERGENCY_STOP';
-      simState.riskLevel = 'CRITICAL';
-      simState.decisionExplanation = `ALL CORRIDORS BLOCKED: No feasible collision-free trajectory satisfies safety margins. Executing controlled safe stop.`;
-      ego.a = -5.5;
-      ego.target_v = 0.0;
+      // If tight gap is available, negotiate gap at creep speed rather than stopping indefinitely!
+      if (maxClearanceCandidate && maxClearanceCandidate.minObsDist >= 1.45) {
+        bestPath = maxClearanceCandidate;
+        ego.target_lat = bestPath.targetLat;
+        ego.target_v = 2.4; // ~8.5 km/h creep speed
+        ego.a = (ego.target_v - ego.v) * 0.9;
+        ego.selected_path = bestPath.path;
+        simState.activeDecision = 'TIGHT_GAP_EVASION';
+        simState.riskLevel = 'MODERATE';
+        simState.decisionExplanation = `Narrow gap corridor negotiation around obstacle (Clearance: ${bestPath.minObsDist.toFixed(1)}m). Creep speed active (8.5 km/h).`;
+        simState.replanCount++;
+        simState.evasionsCount++;
+      } else {
+        simState.activeDecision = 'EMERGENCY_STOP';
+        simState.riskLevel = 'CRITICAL';
+        simState.decisionExplanation = `ALL CORRIDORS BLOCKED: Holding controlled stop (${maxClearance.toFixed(1)}m clearance) until path clears.`;
+        ego.a = -4.5;
+        ego.target_v = 0.0;
+      }
     } else if (bestPath.targetLat !== 0.0 && minObsDist < 30.0) {
       // Lateral Replan Active (e.g. Case 3 Pothole, Case 5 Blockade)
       const corridorName = bestPath.targetLat > 0 ? 'Left Lane' : 'Right Lane';

@@ -371,12 +371,14 @@
             </select>
 
             <select id="simObstacleTypeSelect" class="sim-control-select" title="Select obstacle to spawn">
-              <option value="pedestrian">Pedestrian</option>
+              <option value="pedestrian">Pedestrian (Crossing)</option>
+              <option value="dog">Stray Dog (Crossing)</option>
+              <option value="cattle">Stray Cattle (Crossing)</option>
+              <option value="construction">Construction Zone</option>
+              <option value="pothole">Road Pothole</option>
+              <option value="blockade">Road Blockade</option>
               <option value="motorcycle">Motorcycle</option>
               <option value="auto_rickshaw">Auto-Rickshaw</option>
-              <option value="pothole">Pothole</option>
-              <option value="cattle">Stray Cattle</option>
-              <option value="blockade">Road Blockade</option>
             </select>
 
             <button type="button" class="sim-btn" id="simAddObstacleBtn" title="Spawn selected obstacle ahead"><span>＋</span> Add Obstacle</button>
@@ -508,6 +510,13 @@
             </div>
             <div class="feed-viewport">
               <canvas id="frontCamLiveCanvas" width="640" height="360" class="feed-stream-canvas"></canvas>
+              
+              <!-- Real HTML5 Video Player with Dynamic AI Obstacle Detection Overlay -->
+              <div id="uploadedVideoContainer" class="feed-video-wrapper" hidden>
+                <video id="uploadedVideoPlayer" class="feed-stream-video" playsinline muted controls loop></video>
+                <canvas id="uploadedVideoOverlayCanvas" class="feed-stream-overlay-canvas" width="640" height="360"></canvas>
+              </div>
+
               <img id="frontCamImage" class="feed-stream-img" alt="Front Camera Feed" hidden>
               <div id="frontCamPlaceholder" class="feed-placeholder" hidden>
                 <div class="placeholder-icon">📷</div>

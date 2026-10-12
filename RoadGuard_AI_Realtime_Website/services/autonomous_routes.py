@@ -271,6 +271,18 @@ def api_video_snapshot(job_id: str, filename: str):
     return send_from_directory(snap_dir, filename)
 
 
+@autonomous_bp.get("/api/autonomous/video-stream/<job_id>")
+def api_video_stream(job_id: str):
+    """Streams the uploaded video file directly for browser playback."""
+    job = video_analysis_service.get_job(job_id)
+    if not job or not job.get("video_path") or not os.path.exists(job["video_path"]):
+        return jsonify(ok=False, error="Video file not found."), 404
+    video_path = job["video_path"]
+    directory = os.path.dirname(video_path)
+    filename = os.path.basename(video_path)
+    return send_from_directory(directory, filename, mimetype="video/mp4")
+
+
 # -----------------------------------------------------------------------------
 # 3. COLLISION RISK & PATH PLANNING
 # -----------------------------------------------------------------------------
