@@ -27,6 +27,7 @@ from services.simulink_service import simulink_service
 from services.pathweaver_adapter import pathweaver_adapter
 from services.carla_service import carla_service
 from services.dataset_service import dataset_service
+from services.simulation_engine import simulation_engine
 from services.video_analysis_service import (
     video_analysis_service,
     UPLOAD_VIDEOS_DIR,
@@ -60,20 +61,40 @@ if os.path.exists(static_dir):
 templates = Jinja2Templates(directory=templates_dir) if os.path.exists(templates_dir) else None
 
 
+def make_fastapi_url_for(request: Request):
+    """Bridges Flask-style url_for(name, filename=...) to Starlette url_for(name, path=...)."""
+    def url_for(name: str, **kwargs):
+        if name == "static" and "filename" in kwargs:
+            kwargs["path"] = kwargs.pop("filename")
+        return str(request.url_for(name, **kwargs))
+    return url_for
+
+
 # -----------------------------------------------------------------------------
 # 0. FRONTEND UI ROUTE
 # -----------------------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse, summary="Research Dashboard Console")
+@app.get("/simulation", response_class=HTMLResponse, summary="Direct Simulation Console")
 def serve_dashboard(request: Request):
     """Serves the research dashboard interface via FastAPI."""
     if templates:
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "config": {
-                "GOOGLE_MAPS_BROWSER_KEY": os.environ.get("GOOGLE_MAPS_BROWSER_KEY", "")
+        return templates.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "request": request,
+                "url_for": make_fastapi_url_for(request),
+                "user": {
+                    "full_name": "RoadGuard Operator",
+                    "username": "admin",
+                    "role": "admin"
+                },
+                "config": {
+                    "GOOGLE_MAPS_BROWSER_KEY": os.environ.get("GOOGLE_MAPS_BROWSER_KEY", "")
+                }
             }
-        })
+        )
     return HTMLResponse("<h2>RoadGuard AI FastAPI Backend Active. Browse /docs for API documentation.</h2>")
 
 
@@ -376,3 +397,34 @@ def dataset_hardware():
 @app.get("/api/autonomous/dataset/validate", summary="Validate YOLO Dataset")
 def dataset_validate(dataset_name: str = "indian_road_benchmark"):
     return dataset_service.validate_dataset(dataset_name)
+
+
+# -----------------------------------------------------------------------------
+# 7. INTERACTIVE DRIVING SIMULATION (PS 06)
+# -----------------------------------------------------------------------------
+
+class SimStepRequest(BaseModel):
+    ego_state: Dict[str, float] = {"x": 5.0, "y": 0.0, "v_mps": 8.0, "heading_rad": 0.0}
+    obstacles: List[Dict[str, Any]] = []
+    planner_mode: str = "frenet_lattice"
+    dt: float = 0.1
+
+@app.get("/api/autonomous/simulation/scenarios", summary="Get 5 Indian Road Simulation Scenarios")
+def get_simulation_scenarios():
+    return {"ok": True, "scenarios": simulation_engine.get_scenarios_list()}
+
+@app.get("/api/autonomous/simulation/scenario/{scenario_id}", summary="Get Scenario Details")
+def get_simulation_scenario_detail(scenario_id: str):
+    sc = simulation_engine.get_scenario(scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found.")
+    return {"ok": True, "scenario": sc}
+
+@app.post("/api/autonomous/simulation/step", summary="Run Simulation Step with Real Path Planner")
+def run_simulation_step(req: SimStepRequest):
+    return simulation_engine.step_simulation(
+        ego_state=req.ego_state,
+        obstacles=req.obstacles,
+        planner_mode=req.planner_mode,
+        dt=req.dt
+    )

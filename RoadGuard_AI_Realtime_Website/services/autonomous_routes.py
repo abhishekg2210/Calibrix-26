@@ -23,6 +23,7 @@ from services.simulink_service import simulink_service
 from services.pathweaver_adapter import pathweaver_adapter
 from services.carla_service import carla_service
 from services.dataset_service import dataset_service
+from services.simulation_engine import simulation_engine
 from services.video_analysis_service import (
     video_analysis_service,
     UPLOAD_VIDEOS_DIR,
@@ -382,3 +383,36 @@ def api_dataset_train():
 @autonomous_bp.get("/api/autonomous/dataset/job-status/<job_id>")
 def api_dataset_job_status(job_id: str):
     return jsonify(dataset_service.get_job_status(job_id))
+
+
+# -----------------------------------------------------------------------------
+# 7. INTERACTIVE DRIVING SIMULATION (PS 06)
+# -----------------------------------------------------------------------------
+
+@autonomous_bp.get("/api/autonomous/simulation/scenarios")
+def api_sim_scenarios():
+    return jsonify(ok=True, scenarios=simulation_engine.get_scenarios_list())
+
+
+@autonomous_bp.get("/api/autonomous/simulation/scenario/<scenario_id>")
+def api_sim_scenario_detail(scenario_id: str):
+    sc = simulation_engine.get_scenario(scenario_id)
+    if not sc:
+        return jsonify(ok=False, error=f"Scenario '{scenario_id}' not found."), 404
+    return jsonify(ok=True, scenario=sc)
+
+
+@autonomous_bp.post("/api/autonomous/simulation/step")
+def api_sim_step():
+    data = request.get_json(silent=True) or {}
+    ego_state = data.get("ego_state", {"x": 5.0, "y": 0.0, "v_mps": 8.0, "heading_rad": 0.0})
+    obstacles = data.get("obstacles", [])
+    mode = data.get("planner_mode", "frenet_lattice")
+    dt = float(data.get("dt", 0.1))
+    res = simulation_engine.step_simulation(
+        ego_state=ego_state,
+        obstacles=obstacles,
+        planner_mode=mode,
+        dt=dt
+    )
+    return jsonify(res)

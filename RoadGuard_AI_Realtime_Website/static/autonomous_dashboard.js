@@ -88,6 +88,7 @@
     // Toggle views
     const viewMap = {
       'tab-cockpit': 'view-cockpit',
+      'tab-driving-sim': 'view-driving-sim',
       'tab-perception': 'view-perception',
       'tab-simulink': 'view-simulink',
       'tab-scenarios': 'view-scenarios',
@@ -106,6 +107,11 @@
     // Invalidate Leaflet map size when returning to cockpit
     if (targetTab === 'tab-cockpit' && window.roadguardMapInstance) {
       setTimeout(() => window.roadguardMapInstance.invalidateSize(), 150);
+    }
+
+    // Trigger canvas resize when switching to driving simulation
+    if (targetTab === 'tab-driving-sim' && window.DrivingSimulation) {
+      setTimeout(() => window.DrivingSimulation.init(), 120);
     }
 
     // Trigger initial data loads for active tab
@@ -1160,6 +1166,10 @@
     initDatasetControls();
     checkBackendHealth();
     renderRealisticTrajectorySimulation();
+
+    if (window.location.pathname.includes('/simulation') || window.location.hash === '#driving-sim') {
+      switchTab('tab-driving-sim');
+    }
   });
 
 })();

@@ -154,16 +154,17 @@
       attributionControl: true
     }).setView([11.016844, 76.955833], 13);
 
-    // Default CartoDB Dark Matter tile layer
-    state.tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Default: OpenStreetMap Standard (Crisp, accurate, 100% free, zero watermark)
+    state.currentTileStyle = 'osm-standard';
+    state.tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '© OpenStreetMap contributors © CARTO'
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
     }).addTo(state.map);
 
-    $('mapProvider').textContent = 'LEAFLET ACTIVE (CARTO/OSM)';
-    $('mapDataBadge').textContent = 'ENGINE: LEAFLET (OPENSTREETMAP / CARTO)';
+    $('mapProvider').textContent = 'LEAFLET ACTIVE (OPENSTREETMAP NATIVE)';
+    $('mapDataBadge').textContent = 'ENGINE: LEAFLET (OPENSTREETMAP NATIVE - ONLINE)';
     $('apiStatus').textContent = 'OSRM & LEAFLET ENGINE ACTIVE';
-    $('apiStatusSub').textContent = 'Multi-corridor real-time simulation ready.';
+    $('apiStatusSub').textContent = 'Zero-watermark high-resolution road corridors loaded.';
 
     // Map Click Handler (Entity Placement or Origin/Destination selection)
     state.map.on('click', handleMapClick);
@@ -176,30 +177,50 @@
       }
     });
 
-    log('Leaflet Engine Ready', 'High-performance interactive map cockpit loaded.', 'green');
+    log('Leaflet Engine Ready', 'High-performance OpenStreetMap interactive map cockpit loaded.', 'green');
   }
+
+  const MAP_STYLES = [
+    {
+      id: 'osm-standard',
+      name: 'OpenStreetMap Standard (Clear)',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      className: '',
+      attr: '© OpenStreetMap contributors'
+    },
+    {
+      id: 'osm-dark',
+      name: 'Tactical Dark Cockpit (OSM Dark)',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      className: 'dark-tactical-tiles',
+      attr: '© OpenStreetMap contributors'
+    },
+    {
+      id: 'satellite',
+      name: 'Esri Satellite Aerial Imagery',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      className: '',
+      attr: 'Tiles © Esri, Maxar, Earthstar Geographics'
+    }
+  ];
+
+  let currentStyleIdx = 0;
 
   function toggleMapTheme() {
     if (!state.map) return;
-    if (state.currentTileStyle === 'dark') {
+    currentStyleIdx = (currentStyleIdx + 1) % MAP_STYLES.length;
+    const style = MAP_STYLES[currentStyleIdx];
+    if (state.tiles) {
       state.map.removeLayer(state.tiles);
-      state.tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(state.map);
-      state.currentTileStyle = 'light';
-      toast('Map style: OpenStreetMap Standard');
-      log('Map theme changed', 'OpenStreetMap Standard tiles active.');
-    } else {
-      state.map.removeLayer(state.tiles);
-      state.tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors © CARTO'
-      }).addTo(state.map);
-      state.currentTileStyle = 'dark';
-      toast('Map style: CartoDB Dark Cockpit');
-      log('Map theme changed', 'CartoDB Dark Cockpit tiles active.');
     }
+    state.tiles = L.tileLayer(style.url, {
+      maxZoom: 19,
+      className: style.className,
+      attribution: style.attr
+    }).addTo(state.map);
+    state.currentTileStyle = style.id;
+    toast(`Map style: ${style.name}`);
+    log('Map theme changed', `${style.name} active with zero watermark.`);
   }
 
   // --------------------------------------------------------------------------
@@ -1552,19 +1573,13 @@
       // Refresh hazards from backend
       await refreshHazards();
 
-      // Check telemetry hardware
+      // Autonomous software controller telemetry
       try {
         const t = await api('/api/telemetry');
         state.telemetry = t.telemetry;
-        const v = t.telemetry;
-        if ($('batteryVal')) $('batteryVal').textContent = v.battery_voltage ? `${v.battery_voltage} V` : '12.4 V';
-        if ($('vibrationVal')) $('vibrationVal').textContent = v.vibration_g != null ? `${v.vibration_g} G` : '0.35 G';
-        if (v.hardware_connected) {
-          $('telemetryType').textContent = 'HARDWARE';
-          $('vehicleSource').textContent = 'ARDUINO';
-          $('vehicleStatus').textContent = 'Serial telemetry connected';
-          log('Arduino telemetry detected', 'Hardware link active.', 'green');
-        }
+        if ($('telemetryType')) $('telemetryType').textContent = 'AUTONOMOUS';
+        if ($('vehicleSource')) $('vehicleSource').textContent = 'SOFTWARE STACK';
+        if ($('vehicleStatus')) $('vehicleStatus').textContent = 'Autonomous Software Stack Active';
       } catch {}
 
       // Automatically detect and set current GPS location as starting point on startup

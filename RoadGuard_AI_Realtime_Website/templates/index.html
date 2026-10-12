@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='autonomous_dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='driving_simulation.css') }}">
 </head>
 
 <body>
@@ -22,9 +23,9 @@
         <div><strong>ROADGUARD <span>AI</span></strong><small>IRIE ADAPTIVE NAVIGATION SYSTEM</small></div>
       </div>
       <div class="top-status"><span class="live-dot"></span><span id="systemStatus">SYSTEM READY</span><span
-          class="separator"></span><span id="mapProvider">LEAFLET ACTIVE (CARTO/OSM)</span></div>
+          class="separator"></span><span id="mapProvider">LEAFLET ACTIVE (OPENSTREETMAP NATIVE)</span></div>
       <div class="top-actions"><button class="icon-button" id="themeBtn"
-          title="Switch map theme (Dark/Street/Voyager)">◐ Map Style</button>
+          title="Switch map theme (OSM Clear / Dark / Satellite)">◐ Map Style</button>
         <div class="operator">
           <div class="avatar">{{ user.username[0].upper() if user and user.username else 'O' }}</div>
           <div><b>{{ user.full_name or user.username or 'Operator' }}</b><small>{{ (user.role or 'operator').upper()
@@ -39,6 +40,9 @@
     <nav class="research-nav-tabs" id="researchNavTabs">
       <button type="button" class="nav-tab active" data-tab="tab-cockpit">
         <span class="tab-icon">🗺️</span> Map Cockpit
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-driving-sim">
+        <span class="tab-icon">🚗</span> Driving Simulation
       </button>
       <button type="button" class="nav-tab" data-tab="tab-perception">
         <span class="tab-icon">🎯</span> AI Perception & Multi-Cam
@@ -264,14 +268,14 @@
         </div>
       </section>
       <aside class="right-rail">
-        <div class="rail-heading"><span class="eyebrow">VEHICLE TELEMETRY</span><span class="live-chip"><i></i> <span
-              id="telemetryType">DEMO</span></span></div>
+        <div class="rail-heading"><span class="eyebrow">AUTONOMOUS CONTROLLER</span><span class="live-chip"><i></i> <span
+              id="telemetryType">SOFTWARE ACTIVE</span></span></div>
         <div class="vehicle-card">
           <div class="vehicle-top">
             <div><small>VEHICLE STATUS</small>
-              <h3 id="vehicleHealth">STANDBY</h3>
+              <h3 id="vehicleHealth">AUTONOMOUS STANDBY</h3>
             </div>
-            <div class="vehicle-icon">▰</div>
+            <div class="vehicle-icon">🚗</div>
           </div>
           <div class="speed-readout"><strong id="speedVal">0</strong><span>km/h</span>
             <div class="speed-gauge">
@@ -279,14 +283,14 @@
             </div>
           </div>
           <div class="telemetry-grid">
-            <div><span>HEADING</span><b id="headingVal">—</b></div>
-            <div><span>BATTERY</span><b id="batteryVal">—</b></div>
-            <div><span>VIBRATION</span><b id="vibrationVal">—</b></div>
-            <div><span>LAST UPDATE</span><b id="updateVal">—</b></div>
+            <div><span>HEADING</span><b id="headingVal">0.0°</b></div>
+            <div><span>STEERING δ</span><b id="batteryVal">0.0°</b></div>
+            <div><span>ACCEL a</span><b id="vibrationVal">0.0 m/s²</b></div>
+            <div><span>DECISION</span><b id="updateVal">NOMINAL</b></div>
           </div>
-          <div class="vehicle-buttons"><button class="secondary-button" id="trackBtn">Start GPS</button><button
+          <div class="vehicle-buttons"><button class="secondary-button" id="trackBtn">Start GPS Route</button><button
               class="secondary-button" id="stopTrackBtn">Stop</button></div>
-          <div class="source-note" id="sourceNote">Browser GPS requires permission. Hardware data is optional.</div>
+          <div class="source-note" id="sourceNote">Pure Software Kinematic Simulation & Planner (100% Software - No Hardware Required).</div>
         </div>
         <div class="section-heading compact rail-section">
           <div><span class="eyebrow">SENSOR STATUS</span>
@@ -321,6 +325,144 @@
       </aside>
     </main>
     </div> <!-- /#view-cockpit -->
+
+    <!-- 1B. INTERACTIVE DRIVING SIMULATION VIEW (PS 06) -->
+    <div class="tab-view" id="view-driving-sim" hidden>
+      <div class="driving-sim-container">
+        <!-- Control Bar Header -->
+        <div class="sim-header-bar">
+          <div class="sim-title-group">
+            <h2><span>🚗</span> Driving Simulation — Unstructured Indian Road Corridor</h2>
+            <p>Real-time interactive top-down simulation with moving road users, potholes, candidate trajectory lattice, and dynamic collision avoidance decisions.</p>
+          </div>
+          <div class="sim-toolbar">
+            <button type="button" class="sim-btn primary" id="simPlayBtn"><span>▶</span> Start Simulation</button>
+            <button type="button" class="sim-btn" id="simResetBtn"><span>↺</span> Reset Scenario</button>
+            
+            <select id="simScenarioSelect" class="sim-control-select" title="Select Canonical Indian Road Scenario">
+              <option value="scenario_1">Scenario 1: Pedestrian Suddenly Crossing</option>
+              <option value="scenario_2">Scenario 2: Motorcycle Merging From Shoulder</option>
+              <option value="scenario_3">Scenario 3: Severe Pothole in Corridor</option>
+              <option value="scenario_4">Scenario 4: Stray Cattle Wandering On Road</option>
+              <option value="scenario_5">Scenario 5: Dense Traffic & Road Blockage</option>
+            </select>
+
+            <select id="simSpeedSelect" class="sim-control-select" title="Simulation Clock Speed">
+              <option value="0.5">Speed: 0.5x</option>
+              <option value="1.0" selected>Speed: 1.0x (Normal)</option>
+              <option value="2.0">Speed: 2.0x</option>
+              <option value="4.0">Speed: 4.0x</option>
+            </select>
+
+            <select id="simPlannerSelect" class="sim-control-select" title="Active Path Planner Strategy">
+              <option value="frenet_lattice" selected>Frenet Optimal Trajectory (FOT Lattice)</option>
+              <option value="pathweaver">Dynamic Lattice PathWeaver Mode</option>
+              <option value="emergency_brake">Rule-Based Safe Stop Fallback</option>
+            </select>
+
+            <select id="simObstacleTypeSelect" class="sim-control-select" title="Select obstacle to spawn">
+              <option value="pedestrian">Pedestrian</option>
+              <option value="motorcycle">Motorcycle</option>
+              <option value="auto_rickshaw">Auto-Rickshaw</option>
+              <option value="pothole">Pothole</option>
+              <option value="cattle">Stray Cattle</option>
+              <option value="blockade">Road Blockade</option>
+            </select>
+
+            <button type="button" class="sim-btn" id="simAddObstacleBtn" title="Spawn selected obstacle ahead"><span>＋</span> Add Obstacle</button>
+            <button type="button" class="sim-btn secondary" id="simClearCustomBtn" title="Clear added custom obstacles"><span>⟲</span> Clear Custom</button>
+          </div>
+        </div>
+
+        <!-- Simulation Grid Layout -->
+        <div class="sim-grid-layout">
+          <!-- Viewport Column -->
+          <div class="sim-viewport-wrapper">
+            <div class="sim-canvas-card">
+              <span class="sim-viewport-tag">CANVAS: INTERACTIVE KINEMATIC SIMULATION (CLICK ON ROAD TO SPAWN OBSTACLES)</span>
+              <canvas id="drivingSimCanvas"></canvas>
+            </div>
+
+            <!-- Legend Bar -->
+            <div class="sim-legend-bar">
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:#06b6d4;"></span> Selected Optimal Trajectory</div>
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:rgba(56, 189, 248, 0.4); border-top: 1px dashed #38bdf8;"></span> Feasible Lattice Corridors</div>
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:rgba(244, 63, 94, 0.4); border-top: 1px dashed #f43f5e;"></span> Collision-Prone Candidates</div>
+              <div class="sim-legend-item"><span class="sim-legend-dot" style="background:#0284c7;"></span> Autonomous Ego Vehicle</div>
+              <div class="sim-legend-item"><span class="sim-legend-dot" style="background:rgba(239, 68, 68, 0.4); border:1px solid #ef4444;"></span> Hazard Exclusion Zone</div>
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:#10b981;"></span> Target Destination</div>
+            </div>
+          </div>
+
+          <!-- Decision & Telemetry Sidebar Rail -->
+          <div class="sim-side-rail">
+            <!-- Decision Banner Card -->
+            <div class="sim-decision-card">
+              <div class="sim-card-heading">ACTIVE PLANNING DECISION</div>
+              <div id="simDecisionBadge" class="sim-decision-badge nominal">NOMINAL CRUISE</div>
+              <div id="simDecisionDesc" class="sim-decision-desc">Clear corridor ahead. Cruising at nominal speed.</div>
+            </div>
+
+            <!-- Telemetry Readouts -->
+            <div class="sim-telemetry-grid">
+              <div class="sim-metric-tile">
+                <span class="label">VEHICLE VELOCITY</span>
+                <span class="val" id="simSpeedReadout">30.6</span><span class="unit">km/h</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">LONGITUDINAL ACCEL</span>
+                <span class="val" id="simAccelReadout">0.00</span><span class="unit">m/s²</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">STEERING ANGLE δ</span>
+                <span class="val" id="simSteeringReadout">0.0</span><span class="unit">deg</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">LATERAL OFFSET d</span>
+                <span class="val" id="simLateralOffsetReadout">0.00</span><span class="unit">m</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">TIME TO COLLISION</span>
+                <span class="val" id="simTtcReadout">> 20s</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">MIN CLEARANCE</span>
+                <span class="val" id="simClearanceReadout">> 100m</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">SIMULATION CLOCK</span>
+                <span class="val" id="simTimeReadout">0.0s</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">ROUTE PROGRESS</span>
+                <span class="val" id="simProgressReadout">8.0 / 115m</span>
+              </div>
+            </div>
+
+            <!-- Active Detected Actors Table -->
+            <div class="sim-table-card">
+              <h4>DYNAMIC & STATIC ROAD USERS</h4>
+              <div style="max-height: 170px; overflow-y: auto;">
+                <table class="sim-actor-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Class</th>
+                      <th>Pos (m)</th>
+                      <th>Dist</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="simActorTableBody">
+                    <tr><td colspan="5" class="table-empty">Loading obstacles...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 2. AI PERCEPTION & MULTI-CAMERA RIG VIEW -->
     <div class="tab-view" id="view-perception" hidden>
@@ -1056,6 +1198,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script src="{{ url_for('static', filename='autonomous_dashboard.js') }}"></script>
+  <script src="{{ url_for('static', filename='driving_simulation.js') }}"></script>
 </body>
 
 </html>

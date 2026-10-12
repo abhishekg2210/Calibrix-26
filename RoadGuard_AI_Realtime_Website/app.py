@@ -40,6 +40,8 @@ if initial_serial_port:
 # -----------------------------------------------------------------------------
 
 @app.get("/")
+@app.get("/simulation")
+@app.get("/driving-simulation")
 @login_required
 def home():
     user = get_user_by_id(session.get("user_id"))
