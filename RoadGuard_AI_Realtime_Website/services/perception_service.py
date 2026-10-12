@@ -36,20 +36,29 @@ class IndianRoadPerceptionEngine:
         "cow": "Dog/cattle",
         "horse": "Dog/cattle",
         "sheep": "Dog/cattle",
+        "cat": "Dog/cattle",
+        "traffic light": "Traffic Light",
+        "stop sign": "Traffic Sign",
+        "ambulance": "Ambulance / Emergency Vehicle",
+        "fire truck": "Ambulance / Emergency Vehicle",
         # Custom classes supported by Indian Roads fine-tuned models
         "pothole": "Pothole",
         "barrier": "Construction barrier/road blockage",
         "barricade": "Construction barrier/road blockage",
-        "autorickshaw": "Vehicle"
+        "autorickshaw": "Vehicle",
+        "auto rickshaw": "Vehicle"
     }
 
     TAXONOMY_INFO = {
-        "Vehicle": {"color": (0, 165, 255), "category": "Core Transport", "source": "COCO Pre-trained / Fine-tuned"},
-        "Motorcycle/bicycle": {"color": (255, 191, 0), "category": "Vulnerable Road User", "source": "COCO Pre-trained"},
-        "Pedestrian": {"color": (0, 255, 0), "category": "Vulnerable Road User", "source": "COCO Pre-trained"},
-        "Dog/cattle": {"color": (255, 105, 180), "category": "Animal Crossing", "source": "COCO Animals (Dog/Cow)"},
-        "Pothole": {"color": (0, 0, 255), "category": "Road Surface Damage", "source": "Custom Model (Annotation Required)"},
-        "Construction barrier/road blockage": {"color": (255, 0, 255), "category": "Infrastructure Hazard", "source": "Custom Model (Annotation Required)"}
+        "Vehicle": {"color": (0, 165, 255), "hex": "#00a5ff", "category": "Core Transport", "source": "COCO Pre-trained / Fine-tuned"},
+        "Motorcycle/bicycle": {"color": (255, 191, 0), "hex": "#ffbf00", "category": "Vulnerable Road User", "source": "COCO Pre-trained"},
+        "Pedestrian": {"color": (0, 255, 0), "hex": "#00ff00", "category": "Vulnerable Road User", "source": "COCO Pre-trained"},
+        "Dog/cattle": {"color": (255, 105, 180), "hex": "#ff69b4", "category": "Animal Crossing", "source": "COCO Animals (Dog/Cow)"},
+        "Traffic Light": {"color": (0, 255, 255), "hex": "#00ffff", "category": "Traffic Control", "source": "COCO Pre-trained"},
+        "Traffic Sign": {"color": (255, 215, 0), "hex": "#ffd700", "category": "Traffic Control", "source": "COCO Pre-trained"},
+        "Ambulance / Emergency Vehicle": {"color": (0, 0, 255), "hex": "#ff3b30", "category": "Priority Emergency", "source": "COCO Priority Vehicle"},
+        "Pothole": {"color": (0, 0, 255), "hex": "#ff3333", "category": "Road Surface Damage", "source": "Custom Model (Annotation Required)"},
+        "Construction barrier/road blockage": {"color": (255, 0, 255), "hex": "#ff00ff", "category": "Infrastructure Hazard", "source": "Custom Model (Annotation Required)"}
     }
 
     def __init__(self, models_dir: Optional[str] = None):
@@ -149,20 +158,22 @@ class IndianRoadPerceptionEngine:
                     conf = float(box.conf[0])
                     coords = box.xyxy[0].tolist()
 
-                    mapped_class = self.CLASS_MAPPINGS.get(raw_name.lower(), None)
-                    if mapped_class:
-                        detections.append({
-                            "bbox": [round(float(coords[0]), 1), round(float(coords[1]), 1),
-                                     round(float(coords[2]), 1), round(float(coords[3]), 1)],
-                            "class_name": mapped_class,
-                            "raw_label": raw_name,
-                            "confidence": round(conf, 3)
-                        })
+                    mapped_class = self.CLASS_MAPPINGS.get(raw_name.lower(), raw_name.capitalize())
+                    detections.append({
+                        "bbox": [round(float(coords[0]), 1), round(float(coords[1]), 1),
+                                 round(float(coords[2]), 1), round(float(coords[3]), 1)],
+                        "class_name": mapped_class,
+                        "raw_label": raw_name,
+                        "confidence": round(conf, 3)
+                    })
         except Exception as yolo_err:
             print(f"[Perception Error] Real YOLO inference failed: {yolo_err}")
 
         inference_ms = (time.perf_counter() - start_time) * 1000.0
         return detections, round(inference_ms, 2)
+
+    def set_confidence_threshold(self, threshold: float):
+        self.confidence_threshold = max(0.05, min(0.95, float(threshold)))
 
     def annotate_frame(
         self,

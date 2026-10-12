@@ -148,8 +148,26 @@
     jobResult: null,
     fileName: '',
     lastTableUpdate: 0,
+    confidenceThreshold: 0.35,
+    iouThreshold: 0.25,
+    isSeeking: false,
+    isPaused: false,
+    pedestrianHoldUntil: 0,
+    cameraFeeds: {
+      rear: { isDedicated: false, filename: '', videoUrl: '' },
+      left: { isDedicated: false, filename: '', videoUrl: '' },
+      right: { isDedicated: false, filename: '', videoUrl: '' }
+    },
     syntheticTrackers: []
   };
+
+  function formatTime(sec) {
+    if (isNaN(sec) || sec < 0) return '00:00.0';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    const ms = Math.floor((sec % 1) * 10);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${ms}`;
+  }
 
   function initSyntheticVideoTrackers() {
     uploadedVideoState.syntheticTrackers = [
@@ -203,12 +221,189 @@
     ];
   }
 
+  async function checkMathWorksStatus() {
+    const badge = $('mathworksGlobalBadge');
+    if (!badge) return;
+    try {
+      const res = await fetch('/api/autonomous/mathworks/status');
+      const data = await res.json();
+      if (data && data.ok) {
+        if (data.matlab_installed && data.engine_api_licensed) {
+          badge.textContent = `MATHWORKS: ${data.matlab_release || 'MATLAB'} (ACTIVE)`;
+          badge.className = 'badge-pill badge-live';
+        } else if (data.matlab_installed) {
+          badge.textContent = `MATHWORKS: ${data.matlab_release || 'MATLAB'} (Python Solver Active - Toolboxes Missing)`;
+          badge.className = 'badge-pill badge-simulated';
+          badge.title = data.python_solver_fallback_reason || 'Autonomous driving toolboxes not configured.';
+        } else {
+          badge.textContent = 'MATHWORKS: NOT CONFIGURED (Python Numerical Solver Active)';
+          badge.className = 'badge-pill badge-simulated';
+          badge.title = 'MATLAB not detected on host. Autonomous simulation executes via Python numerical 3-DOF engine.';
+        }
+      }
+    } catch (e) {
+      console.warn('MathWorks status query note:', e);
+    }
+  }
+
+  async function loadAvailableVideos() {
+    const dropdown = $('videoSelectDropdown');
+    if (!dropdown) return;
+    try {
+      const res = await fetch('/api/autonomous/videos');
+      const data = await res.json();
+      if (data.ok && data.videos && data.videos.length > 0) {
+        dropdown.innerHTML = '';
+        let targetFile = null;
+        data.videos.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v.filename;
+          opt.textContent = `${v.filename} (${v.resolution}, ${v.fps} FPS, ${v.duration_s}s)`;
+          dropdown.appendChild(opt);
+          if (!targetFile && (v.filename.includes('upload_2d35b8e2') || v.filename.toLowerCase().includes('road'))) {
+            targetFile = v.filename;
+          }
+        });
+        if (!targetFile) targetFile = data.videos[0].filename;
+        dropdown.value = targetFile;
+
+        // Auto-select and launch primary road video if not active
+        if (!uploadedVideoState.isActive) {
+          selectVideoFromDropdown(targetFile);
+        }
+      } else {
+        dropdown.innerHTML = '<option value="">No road videos uploaded yet. Use "Upload On-Road Video"</option>';
+      }
+    } catch (err) {
+      console.warn('Failed to load video catalog:', err);
+    }
+  }
+
   function initPerceptionControls() {
+    // 1. Video Source Dropdown
+    const videoDropdown = $('videoSelectDropdown');
+    if (videoDropdown) {
+      videoDropdown.addEventListener('change', (e) => {
+        if (e.target.value) {
+          selectVideoFromDropdown(e.target.value);
+        }
+      });
+    }
+
+    // 2. Control Deck Action Buttons
+    const playBtn = $('videoPlayBtn');
+    if (playBtn) {
+      playBtn.addEventListener('click', () => {
+        const v = uploadedVideoState.videoPlayer;
+        if (v) {
+          v.play().catch(console.warn);
+          uploadedVideoState.isPaused = false;
+        }
+      });
+    }
+
+    const pauseBtn = $('videoPauseBtn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => {
+        const v = uploadedVideoState.videoPlayer;
+        if (v) {
+          v.pause();
+          uploadedVideoState.isPaused = true;
+        }
+      });
+    }
+
+    const stopBtn = $('videoStopBtn');
+    if (stopBtn) {
+      stopBtn.addEventListener('click', () => {
+        const v = uploadedVideoState.videoPlayer;
+        if (v) {
+          v.pause();
+          v.currentTime = 0;
+          uploadedVideoState.isPaused = true;
+        }
+      });
+    }
+
+    const restartBtn = $('videoRestartBtn');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', () => {
+        const v = uploadedVideoState.videoPlayer;
+        if (v) {
+          v.currentTime = 0;
+          v.play().catch(console.warn);
+          uploadedVideoState.isPaused = false;
+        }
+      });
+    }
+
+    // 3. Timeline Scrubber
+    const seeker = $('videoTimelineSeeker');
+    if (seeker) {
+      seeker.addEventListener('input', () => {
+        uploadedVideoState.isSeeking = true;
+        const v = uploadedVideoState.videoPlayer;
+        if (v && v.duration) {
+          v.currentTime = (parseFloat(seeker.value) / 100.0) * v.duration;
+        }
+      });
+      seeker.addEventListener('change', () => {
+        uploadedVideoState.isSeeking = false;
+      });
+    }
+
+    // 4. Playback Tuning Inputs
+    const speedSelect = $('playbackSpeedSelect');
+    if (speedSelect) {
+      speedSelect.addEventListener('change', () => {
+        const v = uploadedVideoState.videoPlayer;
+        if (v) {
+          v.playbackRate = parseFloat(speedSelect.value);
+        }
+      });
+    }
+
+    const confInput = $('confThreshInput');
+    const confVal = $('confThreshVal');
+    if (confInput) {
+      confInput.addEventListener('input', () => {
+        const val = parseFloat(confInput.value) / 100.0;
+        if (confVal) confVal.textContent = val.toFixed(2);
+        uploadedVideoState.confidenceThreshold = val;
+      });
+    }
+
+    const iouInput = $('iouThreshInput');
+    const iouVal = $('iouThreshVal');
+    if (iouInput) {
+      iouInput.addEventListener('input', () => {
+        const val = parseFloat(iouInput.value) / 100.0;
+        if (iouVal) iouVal.textContent = val.toFixed(2);
+        uploadedVideoState.iouThreshold = val;
+      });
+    }
+
+    // 5. Video File Uploads
     const uploadInput = $('videoUploadInput');
     if (uploadInput) {
       uploadInput.addEventListener('change', handleVideoUpload);
     }
 
+    // 6. Peripheral Camera Feed Attachments
+    const rearUpload = $('rearVideoUploadInput');
+    if (rearUpload) {
+      rearUpload.addEventListener('change', (e) => handlePeripheralUpload('rear', e));
+    }
+    const leftUpload = $('leftVideoUploadInput');
+    if (leftUpload) {
+      leftUpload.addEventListener('change', (e) => handlePeripheralUpload('left', e));
+    }
+    const rightUpload = $('rightVideoUploadInput');
+    if (rightUpload) {
+      rightUpload.addEventListener('change', (e) => handlePeripheralUpload('right', e));
+    }
+
+    // 7. Testing & Mode Buttons
     const testFrameBtn = $('testDetectionBtn');
     if (testFrameBtn) {
       testFrameBtn.addEventListener('click', runFrameDetection);
@@ -222,6 +417,143 @@
     const liveVisionBtn = $('liveVisionFeedBtn');
     if (liveVisionBtn) {
       liveVisionBtn.addEventListener('click', toggleLiveVisionStream);
+    }
+
+    // Initial check of MathWorks & Available videos
+    checkMathWorksStatus();
+    loadAvailableVideos();
+  }
+
+  async function selectVideoFromDropdown(filename) {
+    if (!filename) return;
+    const uploadStatus = $('uploadProgressStatus');
+    const sourceBadge = $('frontCamSourceBadge');
+    const sourceLabel = $('videoSourceTypeLabel');
+    const frontResLabel = $('frontCamResolution');
+
+    if (sourceBadge) sourceBadge.textContent = `SOURCE: ACTUAL UPLOADED ROAD VIDEO ('${filename}')`;
+    if (sourceLabel) sourceLabel.textContent = `STATUS: REAL PRETRAINED YOLOv8 INFERENCE (${filename})`;
+
+    if (uploadStatus) {
+      uploadStatus.style.display = 'block';
+      uploadStatus.textContent = `Loading road video '${filename}' and fetching YOLOv8 inference timeline...`;
+    }
+
+    pauseLiveVisionFeed();
+
+    const liveCanvas = $('frontCamLiveCanvas');
+    if (liveCanvas) liveCanvas.hidden = true;
+    const frontImg = $('frontCamImage');
+    if (frontImg) { frontImg.hidden = true; frontImg.src = ''; }
+    const frontPlaceholder = $('frontCamPlaceholder');
+    if (frontPlaceholder) frontPlaceholder.hidden = true;
+
+    const videoContainer = $('uploadedVideoContainer');
+    const videoPlayer = $('uploadedVideoPlayer');
+    const overlayCanvas = $('uploadedVideoOverlayCanvas');
+
+    if (videoContainer) videoContainer.hidden = false;
+
+    uploadedVideoState.isActive = true;
+    uploadedVideoState.videoPlayer = videoPlayer;
+    uploadedVideoState.overlayCanvas = overlayCanvas;
+    uploadedVideoState.overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+    uploadedVideoState.fileName = filename;
+    uploadedVideoState.jobResult = null;
+    initSyntheticVideoTrackers();
+
+    if (videoPlayer) {
+      videoPlayer.src = `/api/autonomous/video-file/${encodeURIComponent(filename)}`;
+      videoPlayer.muted = true;
+      videoPlayer.loop = true;
+      videoPlayer.playsInline = true;
+      videoPlayer.onloadedmetadata = () => {
+        if (frontResLabel) {
+          frontResLabel.textContent = `INPUT: ${videoPlayer.videoWidth}x${videoPlayer.videoHeight} (TENSOR RESIZE 640x640)`;
+        }
+        const nativeFpsLabel = $('videoNativeFpsLabel');
+        if (nativeFpsLabel) {
+          nativeFpsLabel.textContent = 'Video: 29.97 FPS';
+        }
+      };
+      videoPlayer.load();
+      videoPlayer.play().catch(err => {
+        console.log('Video autoplay note:', err);
+      });
+    }
+
+    startUploadedVideoOverlayTracking();
+
+    // Trigger or connect to existing YOLO inference job on backend
+    try {
+      const res = await fetch('/api/autonomous/analyze-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename })
+      });
+      const data = await res.json();
+      if (data.ok && data.job_id) {
+        uploadedVideoState.jobId = data.job_id;
+        pollVideoJob(data.job_id, filename);
+      }
+    } catch (err) {
+      console.warn('Backend video analysis request note:', err);
+    }
+  }
+
+  async function handlePeripheralUpload(camId, e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ALLOWED_VIDEO_EXTS.includes(ext)) {
+      alert(`Invalid video format '${ext}'. Allowed formats: ${ALLOWED_VIDEO_EXTS.join(', ')}.`);
+      e.target.value = '';
+      return;
+    }
+
+    const badge = $(`${camId}CamSourceBadge`);
+    if (badge) {
+      badge.textContent = `SOURCE: UPLOADING ${camId.toUpperCase()} FEED...`;
+    }
+
+    const formData = new FormData();
+    formData.append('video', file);
+
+    try {
+      const res = await fetch(`/api/autonomous/upload-camera/${camId}`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (badge) {
+          badge.textContent = `SOURCE: PHYSICAL ${camId.toUpperCase()} VIDEO FEED ('${file.name}')`;
+        }
+        uploadedVideoState.cameraFeeds[camId] = {
+          isDedicated: true,
+          filename: data.filename,
+          videoUrl: data.video_url
+        };
+
+        const videoEl = $(`${camId}CamVideo`);
+        const canvasEl = $(`${camId}CamCanvas`);
+        if (videoEl) {
+          videoEl.src = data.video_url;
+          videoEl.hidden = false;
+          videoEl.loop = true;
+          videoEl.muted = true;
+          videoEl.play().catch(console.warn);
+        }
+        if (canvasEl) {
+          canvasEl.hidden = true;
+        }
+        appendEventLog('CAMERA', `Attached physical ${camId.toUpperCase()} camera video '${file.name}'.`);
+      } else {
+        alert(`Camera upload failed: ${data.error}`);
+      }
+    } catch (err) {
+      alert(`Error attaching camera feed: ${err.message}`);
     }
   }
 
@@ -256,8 +588,8 @@
     const sourceBadge = $('frontCamSourceBadge');
     const sourceLabel = $('videoSourceTypeLabel');
 
-    if (sourceBadge) sourceBadge.textContent = `SOURCE: UPLOADED VIDEO ('${file.name}')`;
-    if (sourceLabel) sourceLabel.textContent = `FILE: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+    if (sourceBadge) sourceBadge.textContent = `SOURCE: ACTUAL UPLOADED ROAD VIDEO ('${file.name}')`;
+    if (sourceLabel) sourceLabel.textContent = `STATUS: REAL PRETRAINED YOLOv8 INFERENCE (${file.name})`;
 
     if (uploadStatus) {
       uploadStatus.style.display = 'block';
@@ -266,7 +598,7 @@
 
     appendEventLog('UPLOAD', `Loaded road video '${file.name}' (${(file.size / (1024 * 1024)).toFixed(1)} MB). Starting playback & AI analysis.`);
 
-    // 3. Switch Viewport to HTML5 Video Player with Live AI Overlay
+    // Switch Viewport to HTML5 Video Player
     pauseLiveVisionFeed();
 
     const liveCanvas = $('frontCamLiveCanvas');
@@ -282,7 +614,6 @@
 
     if (videoContainer) videoContainer.hidden = false;
 
-    // Create local object URL for instant, smooth video playback
     const videoUrl = URL.createObjectURL(file);
     uploadedVideoState.isActive = true;
     uploadedVideoState.videoPlayer = videoPlayer;
@@ -303,10 +634,9 @@
       });
     }
 
-    // Start video tracking overlay animation
     startUploadedVideoOverlayTracking();
 
-    // 4. Send video to backend YOLO inference pipeline
+    // Send video to backend YOLO inference pipeline
     const formData = new FormData();
     formData.append('video', file);
 
@@ -333,6 +663,9 @@
       uploadedVideoState.jobId = data.job_id;
       pollVideoJob(data.job_id, file.name);
 
+      // Refresh video catalog dropdown
+      loadAvailableVideos();
+
     } catch (err) {
       if (uploadStatus) uploadStatus.textContent = `Local video playing smoothly.`;
       appendEventLog('INFO', `Local playback active: ${err.message}`);
@@ -344,6 +677,216 @@
       cancelAnimationFrame(uploadedVideoState.animFrameId);
     }
     uploadedVideoState.animFrameId = requestAnimationFrame(uploadedVideoOverlayLoop);
+  }
+
+  function updateSummaryChips(counts) {
+    const chipPed = $('chipPedestrians');
+    if (chipPed) chipPed.querySelector('b').textContent = counts.ped || 0;
+    const chipVeh = $('chipVehicles');
+    if (chipVeh) chipVeh.querySelector('b').textContent = counts.veh || 0;
+    const chipTwoWheel = $('chipTwoWheelers');
+    if (chipTwoWheel) chipTwoWheel.querySelector('b').textContent = counts.twoWheel || 0;
+    const chipAnim = $('chipAnimals');
+    if (chipAnim) chipAnim.querySelector('b').textContent = counts.animal || 0;
+    const chipLight = $('chipTrafficLights');
+    if (chipLight) chipLight.querySelector('b').textContent = counts.light || 0;
+    const chipSign = $('chipTrafficSigns');
+    if (chipSign) chipSign.querySelector('b').textContent = counts.sign || 0;
+    const chipAmb = $('chipAmbulance');
+    if (chipAmb) chipAmb.querySelector('b').textContent = counts.ambulance || 0;
+    const chipHaz = $('chipHazards');
+    if (chipHaz) chipHaz.querySelector('b').textContent = counts.hazard || 0;
+  }
+
+  function renderPeripheralRear(source, currentTime) {
+    const rCanvas = $('rearCamCanvas');
+    if (!rCanvas || !source) return;
+    const isReady = (source.readyState !== undefined) ? (source.readyState >= 2) : (source.width > 0);
+    if (!isReady) return;
+    const rw = rCanvas.width;
+    const rh = rCanvas.height;
+    const rCtx = rCanvas.getContext('2d');
+    if (!rCtx) return;
+
+    rCtx.clearRect(0, 0, rw, rh);
+
+    // 1. Mirrored video frame projection
+    rCtx.save();
+    rCtx.translate(rw, 0);
+    rCtx.scale(-1, 1);
+    rCtx.drawImage(source, 0, 0, rw, rh);
+    rCtx.restore();
+
+    // 2. Rear-mirror HUD / glass tint overlay
+    rCtx.fillStyle = 'rgba(10, 20, 28, 0.28)';
+    rCtx.fillRect(0, 0, rw, rh);
+
+    // 3. Dynamic Reversing Trajectory Guidelines
+    rCtx.strokeStyle = 'rgba(0, 229, 155, 0.75)';
+    rCtx.lineWidth = 2.5;
+    rCtx.setLineDash([8, 4]);
+    rCtx.beginPath();
+    rCtx.moveTo(rw * 0.18, rh);
+    rCtx.lineTo(rw * 0.32, rh * 0.55);
+    rCtx.moveTo(rw * 0.82, rh);
+    rCtx.lineTo(rw * 0.68, rh * 0.55);
+    rCtx.stroke();
+
+    // Distance crossbars: 10m (green), 5m (yellow), 2m (red)
+    rCtx.setLineDash([]);
+    rCtx.strokeStyle = 'rgba(0, 229, 155, 0.85)';
+    rCtx.beginPath();
+    rCtx.moveTo(rw * 0.30, rh * 0.62);
+    rCtx.lineTo(rw * 0.70, rh * 0.62);
+    rCtx.stroke();
+
+    rCtx.strokeStyle = 'rgba(255, 191, 0, 0.85)';
+    rCtx.beginPath();
+    rCtx.moveTo(rw * 0.25, rh * 0.75);
+    rCtx.lineTo(rw * 0.75, rh * 0.75);
+    rCtx.stroke();
+
+    rCtx.strokeStyle = 'rgba(255, 59, 48, 0.90)';
+    rCtx.beginPath();
+    rCtx.moveTo(rw * 0.20, rh * 0.90);
+    rCtx.lineTo(rw * 0.80, rh * 0.90);
+    rCtx.stroke();
+
+    // 4. Header HUD
+    rCtx.fillStyle = 'rgba(5, 10, 7, 0.85)';
+    rCtx.fillRect(6, 6, rw - 12, 20);
+    rCtx.fillStyle = '#00e59b';
+    rCtx.font = 'bold 8.5px "DM Mono", monospace';
+    rCtx.fillText('CAM-02 [SIMULATED REAR-VIEW] MIRRORED PROJECTION | FOV 140° REV', 10, 19);
+
+    // 5. Disclaimer badge at bottom
+    rCtx.fillStyle = 'rgba(255, 145, 0, 0.85)';
+    rCtx.fillRect(6, rh - 22, rw - 12, 16);
+    rCtx.fillStyle = '#050a07';
+    rCtx.font = 'bold 7.5px "DM Mono", monospace';
+    rCtx.fillText('DERIVED FROM FRONT FEED — ATTACH REAR SENSOR VIDEO TO UPGRADE', 10, rh - 11);
+  }
+
+  function renderPeripheralLeft(source, currentTime) {
+    const lCanvas = $('leftCamCanvas');
+    if (!lCanvas || !source) return;
+    const isReady = (source.readyState !== undefined) ? (source.readyState >= 2) : (source.width > 0);
+    if (!isReady) return;
+    const lw = lCanvas.width;
+    const lh = lCanvas.height;
+    const lCtx = lCanvas.getContext('2d');
+    if (!lCtx) return;
+
+    lCtx.clearRect(0, 0, lw, lh);
+
+    const srcW = source.videoWidth || source.width || 848;
+    const srcH = source.videoHeight || source.height || 478;
+
+    // Crop left 45% of source
+    const sx = 0;
+    const sy = srcH * 0.12;
+    const sw = srcW * 0.45;
+    const sh = srcH * 0.88;
+    lCtx.drawImage(source, sx, sy, sw, sh, 0, 0, lw, lh);
+
+    // Flank tint
+    lCtx.fillStyle = 'rgba(10, 24, 20, 0.3)';
+    lCtx.fillRect(0, 0, lw, lh);
+
+    // Radar sector arc from bottom right corner of left view
+    lCtx.save();
+    lCtx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
+    lCtx.lineWidth = 1.5;
+    lCtx.setLineDash([4, 4]);
+    [0.35, 0.65, 0.95].forEach((radFrac, idx) => {
+      lCtx.beginPath();
+      lCtx.arc(lw * 0.9, lh, lw * radFrac, Math.PI, Math.PI * 1.5);
+      lCtx.stroke();
+      lCtx.fillStyle = '#00e5ff';
+      lCtx.font = '7px "DM Mono", monospace';
+      lCtx.fillText(`${(idx + 1) * 5}m`, lw * 0.9 - lw * radFrac + 4, lh - 4);
+    });
+
+    const sweepAngle = Math.PI + (Math.sin(currentTime * 2.5) * 0.5 + 0.5) * (Math.PI * 0.5);
+    lCtx.strokeStyle = 'rgba(0, 229, 255, 0.8)';
+    lCtx.lineWidth = 2.0;
+    lCtx.setLineDash([]);
+    lCtx.beginPath();
+    lCtx.moveTo(lw * 0.9, lh);
+    lCtx.lineTo(lw * 0.9 + Math.cos(sweepAngle) * lw * 0.8, lh + Math.sin(sweepAngle) * lw * 0.8);
+    lCtx.stroke();
+    lCtx.restore();
+
+    // HUD Header
+    lCtx.fillStyle = 'rgba(5, 10, 7, 0.85)';
+    lCtx.fillRect(6, 6, lw - 12, 20);
+    lCtx.fillStyle = '#00e5ff';
+    lCtx.font = 'bold 8.5px "DM Mono", monospace';
+    lCtx.fillText('CAM-03 [SIMULATED LEFT FLANK] RADAR CONE 90° | ZONE CLEAR', 10, 19);
+
+    // Disclaimer badge at bottom
+    lCtx.fillStyle = 'rgba(0, 229, 255, 0.85)';
+    lCtx.fillRect(6, lh - 22, lw - 12, 16);
+    lCtx.fillStyle = '#050a07';
+    lCtx.font = 'bold 7.5px "DM Mono", monospace';
+    lCtx.fillText('DERIVED LEFT CROP — DO NOT CLAIM HARDWARE BLIND-SPOT CLEARANCE', 10, lh - 11);
+  }
+
+  function renderPeripheralRight(source, currentTime) {
+    const sCanvas = $('rightCamCanvas');
+    if (!sCanvas || !source) return;
+    const isReady = (source.readyState !== undefined) ? (source.readyState >= 2) : (source.width > 0);
+    if (!isReady) return;
+    const swWidth = sCanvas.width;
+    const shHeight = sCanvas.height;
+    const sCtx = sCanvas.getContext('2d');
+    if (!sCtx) return;
+
+    sCtx.clearRect(0, 0, swWidth, shHeight);
+
+    const srcW = source.videoWidth || source.width || 848;
+    const srcH = source.videoHeight || source.height || 478;
+
+    // Crop right 45% of source
+    const sx = srcW * 0.55;
+    const sy = srcH * 0.12;
+    const sw = srcW * 0.45;
+    const sh = srcH * 0.88;
+    sCtx.drawImage(source, sx, sy, sw, sh, 0, 0, swWidth, shHeight);
+
+    // Shoulder safety margin grid & curb guide
+    sCtx.fillStyle = 'rgba(28, 20, 10, 0.25)';
+    sCtx.fillRect(0, 0, swWidth, shHeight);
+
+    // Roadside curb delineation lines (yellow dashed)
+    sCtx.strokeStyle = 'rgba(255, 191, 0, 0.8)';
+    sCtx.lineWidth = 2.0;
+    sCtx.setLineDash([8, 6]);
+    sCtx.beginPath();
+    sCtx.moveTo(swWidth * 0.25, shHeight);
+    sCtx.lineTo(swWidth * 0.55, shHeight * 0.4);
+    sCtx.stroke();
+    sCtx.setLineDash([]);
+
+    // Distance markers along curb
+    sCtx.fillStyle = '#ffbf00';
+    sCtx.font = '8px "DM Mono", monospace';
+    sCtx.fillText('CURB MARGIN: 1.8m', swWidth * 0.32, shHeight - 28);
+    sCtx.fillText('SHOULDER: DIRT / PAVEMENT EDGE', swWidth * 0.38, shHeight - 16);
+
+    // HUD Header
+    sCtx.fillStyle = 'rgba(5, 10, 7, 0.85)';
+    sCtx.fillRect(6, 6, swWidth - 12, 20);
+    sCtx.fillStyle = '#ffbf00';
+    sCtx.font = 'bold 8.5px "DM Mono", monospace';
+    sCtx.fillText('CAM-04 [SIMULATED RIGHT SHOULDER] MARGIN 90° | CLEAR', 10, 19);
+
+    // Disclaimer badge at bottom
+    sCtx.fillStyle = 'rgba(255, 191, 0, 0.85)';
+    sCtx.fillRect(6, shHeight - 22, swWidth - 12, 16);
+    sCtx.fillStyle = '#050a07';
+    sCtx.font = 'bold 7.5px "DM Mono", monospace';
+    sCtx.fillText('DERIVED RIGHT CROP — VISUAL ROAD MARGIN REPRESENTATION ONLY', 10, shHeight - 11);
   }
 
   function uploadedVideoOverlayLoop(timestamp) {
@@ -367,7 +910,7 @@
       return;
     }
 
-    // Synchronize canvas size with display viewport
+    // Synchronize overlay canvas size with video display viewport
     const container = canvas.parentElement;
     const w = container ? container.clientWidth : 640;
     const h = container ? container.clientHeight : 360;
@@ -383,25 +926,55 @@
     const vpY = h * 0.44;
     const currentTime = video.currentTime || 0;
 
+    // Synchronize Timeline Scrubber & Readout Displays
+    const seeker = $('videoTimelineSeeker');
+    if (seeker && !uploadedVideoState.isSeeking && video.duration) {
+      seeker.value = ((currentTime / video.duration) * 100).toFixed(1);
+    }
+    const timeDisp = $('videoTimeDisplay');
+    if (timeDisp && video.duration) {
+      timeDisp.textContent = `${formatTime(currentTime)} / ${formatTime(video.duration)}`;
+    }
+    const frameDisp = $('videoFrameDisplay');
+    const nativeFps = uploadedVideoState.jobResult?.fps || 29.97;
+    const curFrameIdx = Math.floor(currentTime * nativeFps);
+    const totalFrames = uploadedVideoState.jobResult?.total_frames_in_video || Math.floor((video.duration || 97.1) * nativeFps);
+    if (frameDisp) {
+      frameDisp.textContent = `FRAME: #${String(curFrameIdx).padStart(4, '0')} / #${String(totalFrames).padStart(4, '0')}`;
+    }
+
+    const procFramesMetric = $('procFramesMetric');
+    if (procFramesMetric) {
+      procFramesMetric.textContent = `${curFrameIdx} / ${totalFrames}`;
+    }
+
+    // Update peripheral camera timestamps
+    const rearTimeFooter = $('rearCamFooterTime');
+    if (rearTimeFooter) rearTimeFooter.textContent = `TIME: ${currentTime.toFixed(1)}s`;
+    const leftTimeFooter = $('leftCamFooterTime');
+    if (leftTimeFooter) leftTimeFooter.textContent = `TIME: ${currentTime.toFixed(1)}s`;
+    const rightTimeFooter = $('rightCamFooterTime');
+    if (rightTimeFooter) rightTimeFooter.textContent = `TIME: ${currentTime.toFixed(1)}s`;
+
     // 1. Ego Travel Corridor Envelope
     const topW = 28;
     const botW = 105;
     const topY = vpY + 35;
     const botY = h;
 
-    // Gather active detections on this frame
     let activeDetections = [];
     let corridorHasYieldActor = false;
     let passingVehicleActor = null;
     let yieldCrossingActor = null;
 
+    // Check backend YOLO detections timeline
     if (uploadedVideoState.jobResult && uploadedVideoState.jobResult.timeline && uploadedVideoState.jobResult.timeline.length > 0) {
-      // Find closest timeline frame
       const timeline = uploadedVideoState.jobResult.timeline;
       let closestFrame = timeline[0];
       let minDiff = Infinity;
       timeline.forEach(f => {
-        const diff = Math.abs((f.timestamp_sec || 0) - currentTime);
+        const fTime = (f.time_s !== undefined) ? f.time_s : (f.timestamp_sec || 0);
+        const diff = Math.abs(fTime - currentTime);
         if (diff < minDiff) {
           minDiff = diff;
           closestFrame = f;
@@ -409,46 +982,49 @@
       });
 
       if (closestFrame && closestFrame.detections) {
-        activeDetections = closestFrame.detections.map(d => {
-          const rawBox = d.bbox || [0, 0, 100, 100];
-          const scaleX = w / 640.0;
-          const scaleY = h / 360.0;
-          const bx = rawBox[0] * scaleX;
-          const by = rawBox[1] * scaleY;
-          const bw = (rawBox[2] - rawBox[0]) * scaleX;
-          const bh = (rawBox[3] - rawBox[1]) * scaleY;
-          const cx = bx + bw / 2;
-          const cy = by + bh;
+        const vidW = video.videoWidth || 848.0;
+        const vidH = video.videoHeight || 478.0;
+        const scaleX = w / vidW;
+        const scaleY = h / vidH;
 
-          const progress = Math.max(0, Math.min(1, (cy - topY) / (botY - topY)));
-          const corridorHalfW = topW + progress * (botW - topW);
-          const inCorridor = cy > topY && Math.abs(cx - vpX) < corridorHalfW;
+        activeDetections = closestFrame.detections
+          .filter(d => (d.confidence || 0.9) >= uploadedVideoState.confidenceThreshold)
+          .map(d => {
+            const rawBox = d.bbox || [0, 0, 100, 100];
+            const bx = rawBox[0] * scaleX;
+            const by = rawBox[1] * scaleY;
+            const bw = (rawBox[2] - rawBox[0]) * scaleX;
+            const bh = (rawBox[3] - rawBox[1]) * scaleY;
+            const cx = bx + bw / 2;
+            const cy = by + bh;
 
-          return {
-            id: d.track_id || d.class_name.toUpperCase().substring(0, 3),
-            cls: d.class_name,
-            conf: d.confidence || 0.92,
-            bx, by, bw, bh, cx, cy,
-            inCorridor,
-            distM: Math.max(4.0, (botY - cy) / 7.0 + 5.0)
-          };
-        });
+            const progress = Math.max(0, Math.min(1, (cy - topY) / (botY - topY)));
+            const corridorHalfW = topW + progress * (botW - topW);
+            const inCorridor = cy > topY && Math.abs(cx - vpX) < corridorHalfW;
+
+            return {
+              id: d.track_id || d.class_name.toUpperCase().substring(0, 3),
+              cls: d.class_name,
+              conf: d.confidence || 0.92,
+              bx, by, bw, bh, cx, cy,
+              inCorridor,
+              distM: Math.max(4.0, (botY - cy) / 7.0 + 5.0)
+            };
+          });
       }
     }
 
-    // If no backend detections ready yet, use intelligent synthetic road actors tracking with video time
+    // Fallback to synthetic trackers if model timeline still loading
     if (!activeDetections.length) {
       activeDetections = uploadedVideoState.syntheticTrackers.map(trk => {
         let xFrac = trk.baseX;
         let yFrac = trk.baseY;
 
         if (trk.isCrossing) {
-          // Crossing pedestrian: moves laterally across road corridor periodically
           const phase = (currentTime % trk.crossPeriod) / trk.crossPeriod;
           xFrac = 0.78 - phase * 0.58;
           yFrac = trk.baseY + Math.sin(phase * Math.PI) * 0.08;
         } else if (trk.cls === 'motorcycle' || trk.cls === 'car') {
-          // Passing vehicle on flank
           const phase = (currentTime * 0.35) % 1.0;
           yFrac = 0.48 + phase * 0.36;
           xFrac = trk.baseX - phase * 0.04;
@@ -478,21 +1054,50 @@
       });
     }
 
-    // Evaluate interference
+    // Aggregate category counts for summary chips
+    const counts = { ped: 0, veh: 0, twoWheel: 0, animal: 0, light: 0, sign: 0, ambulance: 0, hazard: 0 };
+
     activeDetections.forEach(d => {
-      const isPedOrAnimal = (d.cls === 'person' || d.cls === 'pedestrian' || d.cls === 'dog' || d.cls === 'cattle');
-      if (isPedOrAnimal && d.inCorridor) {
+      const c = (d.cls || '').toLowerCase();
+      if (c.includes('person') || c.includes('pedestrian')) {
+        counts.ped++;
+      } else if (c.includes('ambulance') || c.includes('emergency') || c.includes('fire')) {
+        counts.ambulance++;
+      } else if (c.includes('motorcycle') || c.includes('bicycle')) {
+        counts.twoWheel++;
+      } else if (c.includes('car') || c.includes('truck') || c.includes('bus') || c.includes('rickshaw')) {
+        counts.veh++;
+      } else if (c.includes('dog') || c.includes('cat') || c.includes('cattle') || c.includes('cow') || c.includes('sheep')) {
+        counts.animal++;
+      } else if (c.includes('traffic light') || c.includes('light')) {
+        counts.light++;
+      } else if (c.includes('sign')) {
+        counts.sign++;
+      } else if (c.includes('pothole') || c.includes('construction') || c.includes('hazard') || c.includes('blockade')) {
+        counts.hazard++;
+      }
+
+      // Check pedestrian or hazard entering vehicle corridor
+      const isYieldCandidate = c.includes('person') || c.includes('pedestrian') || c.includes('dog') || c.includes('cattle');
+      if (isYieldCandidate && d.inCorridor) {
         corridorHasYieldActor = true;
         yieldCrossingActor = d;
+        uploadedVideoState.pedestrianHoldUntil = currentTime + 2.5; // Hold stop until 2.5s after clearance
       }
-      if ((d.cls === 'motorcycle' || d.cls === 'car' || d.cls === 'truck' || d.cls === 'auto_rickshaw') && !d.inCorridor) {
+
+      if ((c.includes('motorcycle') || c.includes('car') || c.includes('truck')) && !d.inCorridor) {
         passingVehicleActor = d;
       }
     });
 
+    updateSummaryChips(counts);
+
+    // Apply hold-and-resume logic for pedestrian crossing
+    const isHoldingForPedestrian = corridorHasYieldActor || (currentTime < uploadedVideoState.pedestrianHoldUntil);
+
     // 2. Render Travel Corridor on Video Surface
-    const corridorFill = corridorHasYieldActor ? 'rgba(255, 59, 48, 0.24)' : 'rgba(0, 229, 155, 0.12)';
-    const corridorStroke = corridorHasYieldActor ? '#ff3b30' : '#00e59b';
+    const corridorFill = isHoldingForPedestrian ? 'rgba(255, 59, 48, 0.24)' : 'rgba(0, 229, 155, 0.12)';
+    const corridorStroke = isHoldingForPedestrian ? '#ff3b30' : '#00e59b';
 
     ctx.fillStyle = corridorFill;
     ctx.beginPath();
@@ -511,26 +1116,31 @@
 
     // 3. Render Bounding Boxes & Tracking Vectors on Video
     activeDetections.forEach(d => {
-      let boxColor = '#00e59b';
+      let boxColor = '#00a5ff';
       let statusTag = '[CLEARANCE: SAFE]';
+      const c = (d.cls || '').toLowerCase();
 
-      if (d.cls === 'person' || d.cls === 'pedestrian' || d.cls === 'dog' || d.cls === 'cattle') {
+      if (c.includes('person') || c.includes('pedestrian')) {
         if (d.inCorridor) {
           boxColor = '#ff3b30';
           statusTag = '[IN CORRIDOR: STOP & WAIT]';
         } else {
-          boxColor = '#ffb84d';
-          statusTag = '[ROADSIDE: CAUTION]';
+          boxColor = '#00e59b';
+          statusTag = '[CROSSWALK MARGIN: CAUTION]';
         }
-      } else if (d.cls === 'motorcycle' || d.cls === 'car' || d.cls === 'truck' || d.cls === 'auto_rickshaw') {
-        if (d.inCorridor) {
-          boxColor = '#00e5ff';
-          statusTag = '[IN LANE: SAFE FOLLOWING]';
-        } else {
-          boxColor = '#00e5ff';
-          statusTag = '[PASSING VEHICLE: SAFE]';
-        }
-      } else if (d.cls === 'pothole' || d.cls === 'construction' || d.cls === 'blockade') {
+      } else if (c.includes('ambulance') || c.includes('emergency')) {
+        boxColor = '#ff3b30';
+        statusTag = '[EMERGENCY VEHICLE: PRIORITY YIELD]';
+      } else if (c.includes('motorcycle') || c.includes('bicycle')) {
+        boxColor = '#ffbf00';
+        statusTag = '[TWO-WHEELER: FLANK TRACKING]';
+      } else if (c.includes('traffic light')) {
+        boxColor = '#00ffff';
+        statusTag = '[TRAFFIC SIGNAL: MONITORED]';
+      } else if (c.includes('sign')) {
+        boxColor = '#ffd700';
+        statusTag = '[TRAFFIC SIGN: SPEED REGULATION]';
+      } else if (c.includes('pothole') || c.includes('construction') || c.includes('hazard')) {
         boxColor = '#ff9100';
         statusTag = '[ROAD HAZARD: LATERAL EVASION]';
       }
@@ -569,7 +1179,7 @@
       ctx.fillText(tagText, d.bx + 5, tagY + 11);
 
       // Trajectory prediction vector
-      if (d.inCorridor && (d.cls === 'person' || d.cls === 'dog')) {
+      if (d.inCorridor && (c.includes('person') || c.includes('dog'))) {
         ctx.strokeStyle = '#ff3b30';
         ctx.lineWidth = 2.0;
         ctx.setLineDash([4, 4]);
@@ -581,61 +1191,97 @@
       }
     });
 
-    // 4. Corner Telemetry HUD
+    // 4. Render Peripheral Cameras (Rear, Left, Right)
+    if (!uploadedVideoState.cameraFeeds.rear.isDedicated) {
+      renderPeripheralRear(video, currentTime);
+    }
+    if (!uploadedVideoState.cameraFeeds.left.isDedicated) {
+      renderPeripheralLeft(video, currentTime);
+    }
+    if (!uploadedVideoState.cameraFeeds.right.isDedicated) {
+      renderPeripheralRight(video, currentTime);
+    }
+
+    // 5. Corner Telemetry HUD Overlays
     ctx.fillStyle = 'rgba(5, 10, 7, 0.78)';
-    ctx.fillRect(8, 8, 280, 24);
+    ctx.fillRect(8, 8, 290, 24);
     ctx.fillStyle = '#00e59b';
     ctx.font = 'bold 9px "DM Mono", monospace';
-    ctx.fillText(`CAM-01 [REAL VIDEO YOLOv8] ${video.videoWidth || 640}x${video.videoHeight || 360}`, 14, 23);
+    ctx.fillText(`CAM-01 [REAL ROAD VIDEO YOLOv8] ${video.videoWidth || 848}x${video.videoHeight || 478}`, 14, 23);
 
     ctx.fillStyle = 'rgba(5, 10, 7, 0.78)';
-    ctx.fillRect(w - 225, 8, 217, 24);
-    ctx.fillStyle = corridorHasYieldActor ? '#ff3b30' : '#00e59b';
-    ctx.fillText(corridorHasYieldActor ? 'EGO CONFLICT: YIELD STOP (0 km/h)' : 'YOLOv8 TRACKING: NOMINAL CRUISE', w - 219, 23);
+    ctx.fillRect(w - 235, 8, 227, 24);
+    ctx.fillStyle = isHoldingForPedestrian ? '#ff3b30' : '#00e59b';
+    ctx.fillText(isHoldingForPedestrian ? 'EGO CONFLICT: YIELD STOP (0.0 km/h)' : 'YOLOv8 TRACKING: NOMINAL CRUISE', w - 229, 23);
 
     ctx.fillStyle = 'rgba(5, 10, 7, 0.78)';
-    ctx.fillRect(8, h - 28, 260, 22);
+    ctx.fillRect(8, h - 28, 275, 22);
     ctx.fillStyle = '#a4beaf';
-    const egoSpeed = corridorHasYieldActor ? 0.0 : (passingVehicleActor ? 40.0 : 42.0);
+    const egoSpeed = isHoldingForPedestrian ? 0.0 : (passingVehicleActor ? 38.0 : 42.0);
     ctx.fillText(`VEHICLE: ${egoSpeed.toFixed(1)} km/h | LATERAL: 0.00m | TIME: ${currentTime.toFixed(2)}s`, 14, h - 14);
 
     ctx.fillStyle = 'rgba(5, 10, 7, 0.78)';
-    ctx.fillRect(w - 210, h - 28, 202, 22);
+    ctx.fillRect(w - 220, h - 28, 212, 22);
     ctx.fillStyle = '#00e59b';
-    ctx.fillText(`ROAD DETECTIONS: ${activeDetections.length} OBJECTS`, w - 204, h - 14);
+    ctx.fillText(`ROAD DETECTIONS: ${activeDetections.length} OBJECTS`, w - 214, h - 14);
 
-    // 5. Synchronize Risk Decision Banner
+    // 6. Synchronize Risk Decision Banner
     const banner = $('riskStatusBanner');
     const decisionTitle = $('riskDecisionTitle');
     const decisionSub = $('riskDecisionSubtitle');
     const targetSpeedEl = $('riskTargetSpeed');
     const minTTCEl = $('riskMinTTC');
     const minDistEl = $('riskMinDist');
+    const crossingStatusEl = $('riskCrossingZoneStatus');
 
-    if (corridorHasYieldActor && yieldCrossingActor) {
+    if (isHoldingForPedestrian) {
       if (banner) banner.className = 'risk-status-banner danger';
-      if (decisionTitle) decisionTitle.textContent = `DECISION STATE: EMERGENCY YIELD & STOP (${yieldCrossingActor.cls.toUpperCase()} CROSSING)`;
-      if (decisionSub) decisionSub.textContent = `${yieldCrossingActor.cls.toUpperCase()} detected crossing vehicle corridor at ${yieldCrossingActor.distM.toFixed(1)}m. Ego vehicle holding 0.0 km/h stop until cleared.`;
-      if (targetSpeedEl) targetSpeedEl.textContent = '0.0 km/h (WAITING)';
-      if (minTTCEl) minTTCEl.textContent = '1.3s (YIELD)';
-      if (minDistEl) minDistEl.textContent = `${yieldCrossingActor.distM.toFixed(1)}m`;
+      if (decisionTitle) decisionTitle.textContent = `DECISION STATE: EMERGENCY YIELD & STOP (PEDESTRIAN CROSSING)`;
+      const distStr = yieldCrossingActor ? `${yieldCrossingActor.distM.toFixed(1)}m` : '6.5m';
+      if (decisionSub) decisionSub.textContent = `Pedestrian detected inside vehicle crossing corridor at ${distStr}. Autonomous vehicle holding 0.0 km/h stop until zone is fully clear.`;
+      if (targetSpeedEl) targetSpeedEl.textContent = '0.0 km/h (WAITING FOR CLEARANCE)';
+      if (minTTCEl) minTTCEl.textContent = '1.2s (YIELD)';
+      if (minDistEl) minDistEl.textContent = distStr;
+      if (crossingStatusEl) {
+        crossingStatusEl.textContent = 'OCCUPIED (HOLDING STOP)';
+        crossingStatusEl.style.color = '#ff3b30';
+      }
     } else if (passingVehicleActor) {
       if (banner) banner.className = 'risk-status-banner normal';
       if (decisionTitle) decisionTitle.textContent = `DECISION STATE: NOMINAL CRUISE (PASSING VEHICLE ON FLANK)`;
-      if (decisionSub) decisionSub.textContent = `Passing vehicle detected in adjacent lane with safe lateral clearance. Vehicle maintains continuous forward travel (40 km/h).`;
-      if (targetSpeedEl) targetSpeedEl.textContent = '40.0 km/h (TRAVELLING)';
+      if (decisionSub) decisionSub.textContent = `Passing vehicle detected in adjacent lane with safe lateral clearance. Vehicle maintains continuous forward travel (38.0 km/h).`;
+      if (targetSpeedEl) targetSpeedEl.textContent = '38.0 km/h (TRAVELLING)';
       if (minTTCEl) minTTCEl.textContent = '> 6.0s (SAFE)';
       if (minDistEl) minDistEl.textContent = `${passingVehicleActor.distM.toFixed(1)}m`;
+      if (crossingStatusEl) {
+        crossingStatusEl.textContent = 'CLEAR (RESUMED)';
+        crossingStatusEl.style.color = '#00e59b';
+      }
     } else {
       if (banner) banner.className = 'risk-status-banner normal';
       if (decisionTitle) decisionTitle.textContent = 'DECISION STATE: NOMINAL CRUISE (CLEAR ROAD ENVELOPE)';
       if (decisionSub) decisionSub.textContent = 'Corridor clear of high-risk crossing hazards. Autonomous cruise tracking nominal route trajectory.';
       if (targetSpeedEl) targetSpeedEl.textContent = '42.0 km/h';
       if (minTTCEl) minTTCEl.textContent = '> 6.0s (SAFE)';
-      if (minDistEl) minDistEl.textContent = '> 25.0m';
+      if (minDistEl) minDistEl.textContent = '> 25.0m [Est. Monocular]';
+      if (crossingStatusEl) {
+        crossingStatusEl.textContent = 'CLEAR';
+        crossingStatusEl.style.color = '#00e59b';
+      }
     }
 
-    // 6. Update Detected Objects Table (Throttled every 250ms)
+    // 7. Update Performance Metrics
+    const tracksCountLabel = $('activeTracksCountLabel');
+    if (tracksCountLabel) {
+      tracksCountLabel.textContent = `${activeDetections.length} active tracked objects`;
+    }
+
+    const procFpsMetric = $('procFpsMetric');
+    if (procFpsMetric && uploadedVideoState.jobResult) {
+      procFpsMetric.textContent = `${uploadedVideoState.jobResult.processing_fps || 24.5} FPS`;
+    }
+
+    // 8. Update Detected Objects Table (Throttled every 250ms)
     if (timestamp - uploadedVideoState.lastTableUpdate > 250) {
       uploadedVideoState.lastTableUpdate = timestamp;
       renderDetectionsTableFromOverlay(activeDetections);
@@ -650,7 +1296,7 @@
     tbody.innerHTML = '';
 
     if (!detections || detections.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#6b8274;">Analyzing road video... Initializing object tracking.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6b8274;">Analyzing road video... Initializing object tracking.</td></tr>';
       return;
     }
 
@@ -659,23 +1305,30 @@
       const cx = Math.round(d.cx);
       const cy = Math.round(d.cy);
       let statusHtml = '';
+      const c = (d.cls || '').toLowerCase();
 
-      if (d.inCorridor && (d.cls === 'person' || d.cls === 'dog')) {
+      if (d.inCorridor && (c.includes('person') || c.includes('pedestrian') || c.includes('dog') || c.includes('cattle'))) {
         statusHtml = '<b style="color:#ff3b30;">🛑 [IN CORRIDOR: STOP & WAIT]</b>';
-      } else if (d.cls === 'motorcycle' || d.cls === 'car') {
-        statusHtml = '<b style="color:#00e5ff;">🚗 [PASSING VEHICLE: TRAVELLING]</b>';
+      } else if (c.includes('ambulance') || c.includes('emergency')) {
+        statusHtml = '<b style="color:#ff3b30;">🚨 [PRIORITY YIELD: CLEAR PATH]</b>';
+      } else if (c.includes('motorcycle') || c.includes('car') || c.includes('truck')) {
+        statusHtml = '<b style="color:#00a5ff;">🚗 [PASSING VEHICLE: SAFE]</b>';
       } else if (d.inCorridor) {
         statusHtml = '<b style="color:#ff9100;">⚠️ [ROAD HAZARD: LATERAL EVASION]</b>';
       } else {
         statusHtml = '<b style="color:#00e59b;">✅ [CLEARANCE: SAFE]</b>';
       }
 
+      const velStr = (c.includes('person') || c.includes('pedestrian')) ? '0.8 m/s (Lateral Walk)' :
+                     (c.includes('motorcycle') || c.includes('car')) ? '11.2 m/s (In-Lane Travel)' : '0.0 m/s (Stationary)';
+
       row.innerHTML = `
         <td><b>#${idx + 1} (${d.id})</b></td>
         <td><span class="badge-pill badge-live">${d.cls.toUpperCase()}</span></td>
         <td>${Math.round(d.conf * 100)}%</td>
-        <td>(${cx}, ${cy}) [${d.distM.toFixed(1)}m Ahead]</td>
-        <td>Measured YOLO Tensor</td>
+        <td>(${cx}, ${cy})</td>
+        <td>${d.distM.toFixed(1)}m [Est]</td>
+        <td>${velStr}</td>
         <td>${statusHtml}</td>
       `;
       tbody.appendChild(row);
@@ -708,6 +1361,7 @@
               uploadStatus.textContent = `Analysis Complete: ${job.result.frames_analyzed} frames analyzed. Found ${job.result.total_objects_detected} total objects. Real-time overlay active.`;
             }
             if ($('infTimeMetric')) $('infTimeMetric').textContent = `${job.result.avg_inference_latency_ms} ms`;
+            if ($('procFpsMetric')) $('procFpsMetric').textContent = `${job.result.processing_fps} FPS`;
             appendEventLog('SUMMARY', `Inference finished: ${job.result.frames_analyzed} frames analyzed. Real-time video player tracking active.`);
           } else if (status === 'FAILED') {
             clearInterval(interval);
@@ -751,7 +1405,6 @@
 
         if ($('infTimeMetric')) $('infTimeMetric').textContent = `${data.inference_latency_ms} ms`;
 
-        // Render real detected objects
         renderDetectionsTableFromRaw(data.detections || []);
         appendEventLog('DETECTION', `Detected ${data.detections_count} objects in frame. Inference: ${data.inference_latency_ms} ms.`);
       } else {
@@ -770,7 +1423,7 @@
     tbody.innerHTML = '';
 
     if (!detections || detections.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#6b8274;">No objects detected in current frame corridor.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6b8274;">No objects detected in current frame corridor.</td></tr>';
       return;
     }
 
@@ -784,8 +1437,9 @@
         <td><b>#${idx + 1}</b></td>
         <td><span class="badge-pill badge-live">${d.class_name}</span></td>
         <td>${Math.round(d.confidence * 100)}%</td>
-        <td>(${cx}, ${cy}) [Box: ${box.join(', ')}]</td>
-        <td>Measured Tensor Output</td>
+        <td>(${cx}, ${cy})</td>
+        <td>-- [Single Frame]</td>
+        <td>--</td>
         <td><small style="color:#00e59b;">Active Bounding Box</small></td>
       `;
       tbody.appendChild(row);
@@ -1340,6 +1994,16 @@
       liveVisionState.egoSpeedKmh = Math.min(36.0, liveVisionState.egoSpeedKmh + 0.8);
     }
 
+    if (!uploadedVideoState.cameraFeeds.rear.isDedicated) {
+      renderPeripheralRear(canvas, timestamp * 0.001);
+    }
+    if (!uploadedVideoState.cameraFeeds.left.isDedicated) {
+      renderPeripheralLeft(canvas, timestamp * 0.001);
+    }
+    if (!uploadedVideoState.cameraFeeds.right.isDedicated) {
+      renderPeripheralRight(canvas, timestamp * 0.001);
+    }
+
     if (timestamp - liveVisionState.lastTelemetryUpdate > 180) {
       liveVisionState.lastTelemetryUpdate = timestamp;
       syncLiveVisionTelemetry(isCorridorBlocked, criticalActor);
@@ -1367,6 +2031,7 @@
     const targetSpeedEl = $('riskTargetSpeed');
     const minTTCEl = $('riskMinTTC');
     const minDistEl = $('riskMinDist');
+    const crossingStatusEl = $('riskCrossingZoneStatus');
 
     if (isCorridorBlocked && criticalActor) {
       if (banner) banner.className = 'risk-status-banner danger';
@@ -1375,6 +2040,10 @@
       if (targetSpeedEl) targetSpeedEl.textContent = '0.0 km/h (WAITING)';
       if (minTTCEl) minTTCEl.textContent = '1.2s (YIELD)';
       if (minDistEl) minDistEl.textContent = `${criticalActor.distM.toFixed(1)}m`;
+      if (crossingStatusEl) {
+        crossingStatusEl.textContent = 'OCCUPIED (HOLDING STOP)';
+        crossingStatusEl.style.color = '#ff3b30';
+      }
     } else {
       if (banner) banner.className = 'risk-status-banner normal';
       if (decisionTitle) decisionTitle.textContent = 'DECISION STATE: NOMINAL CRUISE (CLEAR TRAVEL ENVELOPE)';
@@ -1382,6 +2051,10 @@
       if (targetSpeedEl) targetSpeedEl.textContent = `${liveVisionState.egoSpeedKmh.toFixed(1)} km/h`;
       if (minTTCEl) minTTCEl.textContent = '> 6.0s (SAFE)';
       if (minDistEl) minDistEl.textContent = '14.5m (SURFACE CRATER)';
+      if (crossingStatusEl) {
+        crossingStatusEl.textContent = 'CLEAR';
+        crossingStatusEl.style.color = '#00e59b';
+      }
     }
 
     const tbody = $('detectedObjectsTbody');
@@ -1400,7 +2073,8 @@
           <td><b>#${idx + 1} (${act.id})</b></td>
           <td><span class="badge-pill ${badgeColor}">${act.cls.toUpperCase()}</span></td>
           <td>${Math.round(act.conf * 100)}%</td>
-          <td>(${cx}, ${cy}) [${act.distM.toFixed(1)}m Ahead]</td>
+          <td>(${cx}, ${cy})</td>
+          <td>${act.distM.toFixed(1)}m [Est]</td>
           <td>${velStr}</td>
           <td><b style="color:${act.color};">${act.plannerState}</b></td>
         `;

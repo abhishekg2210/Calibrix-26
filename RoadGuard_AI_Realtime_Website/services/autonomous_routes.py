@@ -24,6 +24,7 @@ from services.pathweaver_adapter import pathweaver_adapter
 from services.carla_service import carla_service
 from services.dataset_service import dataset_service
 from services.simulation_engine import simulation_engine
+from services.mathworks_service import mathworks_service
 from services.video_analysis_service import (
     video_analysis_service,
     UPLOAD_VIDEOS_DIR,
@@ -255,6 +256,31 @@ def api_upload_video():
     )
 
 
+@autonomous_bp.post("/api/autonomous/analyze-video")
+def api_analyze_video():
+    """
+    Starts or retrieves an existing YOLO analysis job for an on-server road video.
+    """
+    data = request.get_json(silent=True) or {}
+    filename = data.get("filename", "")
+    if not filename:
+        return jsonify(ok=False, error="No filename specified in request body."), 400
+
+    ok, job_id, err, meta = video_analysis_service.get_or_create_job_for_video(filename)
+    if not ok:
+        return jsonify(ok=False, error=err), 400
+
+    job = video_analysis_service.get_job(job_id)
+    return jsonify(
+        ok=True,
+        job_id=job_id,
+        filename=filename,
+        metadata=meta,
+        status=job.get("status") if job else "RUNNING",
+        status_url=f"/api/autonomous/video-status/{job_id}"
+    )
+
+
 @autonomous_bp.get("/api/autonomous/video-status/<job_id>")
 def api_video_status(job_id: str):
     job = video_analysis_service.get_job(job_id)
@@ -281,6 +307,118 @@ def api_video_stream(job_id: str):
     directory = os.path.dirname(video_path)
     filename = os.path.basename(video_path)
     return send_from_directory(directory, filename, mimetype="video/mp4")
+
+
+@autonomous_bp.get("/api/autonomous/videos")
+def api_get_videos():
+    """Returns list of all available on-road videos on server with complete metadata."""
+    videos = video_analysis_service.list_available_videos()
+    return jsonify(ok=True, videos=videos, total_count=len(videos))
+
+
+@autonomous_bp.get("/api/autonomous/video-file/<filename>")
+def api_get_video_file(filename: str):
+    """Serves video files directly from uploads/videos for smooth HTML5 video player playback."""
+    # Prevent path traversal
+    safe_name = os.path.basename(filename)
+    fpath = os.path.join(UPLOAD_VIDEOS_DIR, safe_name)
+    if not os.path.exists(fpath):
+        return jsonify(ok=False, error=f"Video file '{safe_name}' not found on server."), 404
+    return send_from_directory(UPLOAD_VIDEOS_DIR, safe_name, mimetype="video/mp4")
+
+
+@autonomous_bp.get("/api/autonomous/cameras")
+def api_get_cameras():
+    """Returns configuration and source states for Front, Rear, Left, and Right camera rig."""
+    return jsonify(video_analysis_service.get_camera_sources())
+
+
+@autonomous_bp.post("/api/autonomous/set-camera-source")
+def api_set_camera_source():
+    """Configures camera rig slot with a specific video file or mode."""
+    data = request.get_json(silent=True) or {}
+    cam_id = data.get("camera_id", "front")
+    filename = data.get("filename", "")
+    src_type = data.get("source_type", "PHYSICAL_VIDEO")
+    res = video_analysis_service.set_camera_source(cam_id, filename, src_type)
+    return jsonify(res)
+
+
+@autonomous_bp.post("/api/autonomous/upload-camera/<cam_id>")
+def api_upload_camera_feed(cam_id: str):
+    """Allows uploading a dedicated video feed specifically for front, rear, left, or right camera."""
+    cam_id = cam_id.lower().strip()
+    if cam_id not in ["front", "rear", "left", "right"]:
+        return jsonify(ok=False, error=f"Invalid camera '{cam_id}'."), 400
+
+    if "video" not in request.files:
+        return jsonify(ok=False, error="No video file provided in form data."), 400
+
+    file = request.files["video"]
+    filename = file.filename or ""
+
+    is_valid, err_msg, status_code = video_analysis_service.validate_upload(filename)
+    if not is_valid:
+        return jsonify(ok=False, error=err_msg), status_code
+
+    ext = os.path.splitext(filename)[1].lower() or ".mp4"
+    saved_name = f"cam_{cam_id}_{uuid.uuid4().hex[:8]}{ext}"
+    video_path = os.path.join(UPLOAD_VIDEOS_DIR, saved_name)
+    file.save(video_path)
+
+    is_readable, read_err, meta = video_analysis_service.validate_video_file_readable(video_path)
+    if not is_readable:
+        os.remove(video_path)
+        return jsonify(ok=False, error=read_err), 400
+
+    # Configure camera slot
+    video_analysis_service.set_camera_source(cam_id, saved_name, "PHYSICAL_VIDEO")
+
+    # Start analysis job
+    job_id = video_analysis_service.create_job(filename, video_path, meta)
+
+    return jsonify(
+        ok=True,
+        cam_id=cam_id,
+        filename=saved_name,
+        original_name=filename,
+        metadata=meta,
+        job_id=job_id,
+        video_url=f"/api/autonomous/video-file/{saved_name}",
+        status_url=f"/api/autonomous/video-status/{job_id}",
+        message=f"Uploaded and attached dedicated {cam_id.upper()} camera feed successfully."
+    )
+
+
+@autonomous_bp.get("/api/autonomous/mathworks/status")
+def api_mathworks_status():
+    """Returns genuine diagnostic report on MATLAB installation and 7 autonomous driving toolboxes."""
+    force_refresh = request.args.get("refresh", "false").lower() == "true"
+    return jsonify(mathworks_service.scan_environment(force_refresh=force_refresh))
+
+
+@autonomous_bp.post("/api/autonomous/evaluate-source")
+def api_evaluate_source():
+    """Runs genuine model evaluation on a selected video or dataset."""
+    data = request.get_json(silent=True) or {}
+    source_name = data.get("source_name", "")
+    conf_thresh = float(data.get("confidence_threshold", 0.35))
+    iou_thresh = float(data.get("iou_threshold", 0.25))
+    frame_skip = int(data.get("frame_skip", 2))
+
+    if not source_name:
+        # Default to first available uploaded road video
+        vids = video_analysis_service.list_available_videos()
+        source_name = vids[0]["filename"] if vids else "upload_2d35b8e2.mp4"
+
+    source_path = os.path.join(UPLOAD_VIDEOS_DIR, os.path.basename(source_name))
+    res = dataset_service.evaluate_video_or_dataset(
+        source_path,
+        conf_thresh=conf_thresh,
+        iou_thresh=iou_thresh,
+        frame_skip=frame_skip
+    )
+    return jsonify(res)
 
 
 # -----------------------------------------------------------------------------

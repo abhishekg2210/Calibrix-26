@@ -775,3 +775,320 @@
   gap: 12px;
 }
 
+/* ==========================================================================
+   PERCEPTION CONTROL DECK & TIMELINE SCRUBBER
+   ========================================================================== */
+.perception-control-deck {
+  background: #0a130f;
+  border: 1px solid rgba(0, 229, 155, 0.2);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.control-deck-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.video-select-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 280px;
+}
+
+.control-label {
+  font: 11px 'DM Mono', monospace;
+  font-weight: 700;
+  color: #00e59b;
+  white-space: nowrap;
+}
+
+.video-select-dropdown {
+  background: #060b08;
+  color: #e2f1e8;
+  border: 1px solid #1a3828;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font: 12px Manrope, sans-serif;
+  font-weight: 600;
+  flex: 1;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.18s;
+}
+
+.video-select-dropdown:focus {
+  border-color: #00e59b;
+  box-shadow: 0 0 8px rgba(0, 229, 155, 0.25);
+}
+
+.deck-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deck-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #0d1e16;
+  color: #a4beaf;
+  border: 1px solid #1a3c2a;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font: 11px Manrope, sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.deck-btn:hover {
+  background: #143224;
+  color: #e2f1e8;
+  border-color: #00e59b;
+}
+
+.deck-btn.play-btn {
+  background: #00e59b;
+  color: #031a10;
+  border-color: #00e59b;
+  box-shadow: 0 0 12px rgba(0, 229, 155, 0.35);
+}
+
+.deck-btn.play-btn:hover {
+  background: #1ff4aa;
+}
+
+.deck-btn.pause-btn {
+  background: #2b230f;
+  color: #ffb84d;
+  border-color: #553e18;
+}
+
+.deck-btn.pause-btn:hover {
+  background: #423512;
+}
+
+.deck-btn.stop-btn {
+  background: #2b1114;
+  color: #ff6e75;
+  border-color: #5c1e24;
+}
+
+.deck-btn.stop-btn:hover {
+  background: #3f191d;
+}
+
+.deck-btn.mode-btn.active {
+  background: #00e59b;
+  color: #031a10;
+  border-color: #00e59b;
+}
+
+.scrubber-track-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 260px;
+}
+
+.video-scrubber-slider {
+  width: 100%;
+  height: 6px;
+  background: #13241c;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  accent-color: #00e59b;
+}
+
+.scrubber-time-tags {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font: 10px 'DM Mono', monospace;
+}
+
+.time-readout {
+  color: #00e59b;
+  font-weight: 700;
+}
+
+.frame-readout {
+  color: #8fa598;
+}
+
+.sync-readout {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.playback-tuning-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tuning-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #070e0a;
+  border: 1px solid #142a1e;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: 10px 'DM Mono', monospace;
+  color: #9cb0a4;
+}
+
+.tuning-select {
+  background: #040806;
+  color: #00e59b;
+  border: 1px solid #1a3828;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font: 10px 'DM Mono', monospace;
+  outline: none;
+}
+
+.tuning-range {
+  width: 60px;
+  height: 4px;
+  accent-color: #00e59b;
+  cursor: pointer;
+}
+
+.tuning-val {
+  color: #00e59b;
+  font-weight: 700;
+  min-width: 26px;
+}
+
+.cam-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #10241a;
+  color: #86efac;
+  border: 1px solid #1a442e;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font: 9px Manrope, sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cam-attach-btn:hover {
+  background: #173827;
+  color: #fff;
+  border-color: #00e59b;
+}
+
+.feed-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feed-notice-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  right: 6px;
+  background: rgba(8, 14, 11, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: 8px 'DM Mono', monospace;
+  color: #799485;
+  text-align: center;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.detection-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #08120d;
+  border: 1px solid rgba(0, 229, 155, 0.15);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.summary-chip-label {
+  font: 10px 'DM Mono', monospace;
+  font-weight: 700;
+  color: #8fa598;
+  white-space: nowrap;
+}
+
+.summary-chips-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #040906;
+  border: 1px solid #12241a;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font: 10px 'DM Mono', monospace;
+  color: #b0c7b9;
+  white-space: nowrap;
+}
+
+.summary-chip b {
+  color: #fff;
+}
+
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-color-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.risk-pedestrian-tag {
+  background: #ff3b30;
+  color: #fff;
+  font: 10px 'DM Mono', monospace;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+  display: inline-block;
+}
+
+

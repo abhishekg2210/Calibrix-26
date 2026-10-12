@@ -203,16 +203,131 @@ class DatasetTrainingService:
 
                 job["status"] = "COMPLETED"
                 job["epoch_current"] = epochs
-                job["metrics"] = {
-                    "mAP50": 0.785,
-                    "mAP50_95": 0.542,
-                    "precision": 0.812,
-                    "recall": 0.748
-                }
-                job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Training complete. Weights saved.")
+
+                # Extract genuine training metrics from results if available; do not fabricate
+                real_metrics = {}
+                if hasattr(results, "results_dict") and results.results_dict:
+                    rd = results.results_dict
+                    real_metrics = {
+                        "mAP50": round(float(rd.get("metrics/mAP50(B)", 0.0)), 3),
+                        "mAP50_95": round(float(rd.get("metrics/mAP50-95(B)", 0.0)), 3),
+                        "precision": round(float(rd.get("metrics/precision(B)", 0.0)), 3),
+                        "recall": round(float(rd.get("metrics/recall(B)", 0.0)), 3),
+                        "status": "VALIDATED_AGAINST_GROUND_TRUTH"
+                    }
+                else:
+                    real_metrics = {
+                        "status": "Unavailable — ground-truth annotations required",
+                        "mAP50": None,
+                        "mAP50_95": None,
+                        "precision": None,
+                        "recall": None,
+                        "note": "Precision and mAP require labeled bounding-box validation ground truth."
+                    }
+
+                job["metrics"] = real_metrics
+                job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Training process concluded. Metrics: {real_metrics.get('status')}.")
             except Exception as e:
                 job["status"] = "FAILED"
                 job["logs"].append(f"[{time.strftime('%H:%M:%S')}] Training aborted: {e}")
+
+    def evaluate_video_or_dataset(
+        self,
+        source_path: str,
+        conf_thresh: float = 0.35,
+        iou_thresh: float = 0.25,
+        frame_skip: int = 2
+    ) -> Dict[str, Any]:
+        """
+        Runs real YOLO model evaluation on a selected video or image folder.
+        Reports real measured frames, detection counts, class distribution, latency, and FPS.
+        If ground truth annotations are absent, labels accuracy metrics as Unavailable.
+        """
+        from ultralytics import YOLO
+        import cv2
+
+        if not os.path.exists(source_path):
+            candidate = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "uploads", "videos", os.path.basename(source_path)))
+            if os.path.exists(candidate):
+                source_path = candidate
+            else:
+                return {"ok": False, "error": f"Source path '{source_path}' does not exist."}
+
+        model = YOLO("yolov8n.pt")
+        is_video = os.path.isfile(source_path)
+
+        if is_video:
+            cap = cv2.VideoCapture(source_path)
+            if not cap.isOpened():
+                return {"ok": False, "error": f"Failed to open video file '{source_path}'."}
+
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+            
+            analyzed_frames = 0
+            frame_idx = 0
+            all_confs = []
+            class_counts = {}
+            latencies = []
+            t_eval_start = time.perf_counter()
+
+            while cap.isOpened() and analyzed_frames < 60:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                if frame_idx % frame_skip == 0:
+                    t0 = time.perf_counter()
+                    res = model(frame, conf=conf_thresh, iou=iou_thresh, verbose=False)
+                    lat = (time.perf_counter() - t0) * 1000.0
+                    latencies.append(lat)
+
+                    for r in res:
+                        for box in r.boxes:
+                            c_id = int(box.cls[0])
+                            c_name = r.names.get(c_id, str(c_id))
+                            c_conf = float(box.conf[0])
+                            all_confs.append(c_conf)
+                            class_counts[c_name] = class_counts.get(c_name, 0) + 1
+
+                    analyzed_frames += 1
+
+                frame_idx += 1
+
+            cap.release()
+            t_eval_total = max(0.001, time.perf_counter() - t_eval_start)
+
+            avg_conf = round(sum(all_confs) / max(1, len(all_confs)), 3) if all_confs else 0.0
+            avg_lat = round(sum(latencies) / max(1, len(latencies)), 2) if latencies else 0.0
+            measured_fps = round(analyzed_frames / t_eval_total, 1)
+
+            return {
+                "ok": True,
+                "source_type": "VIDEO_STREAM",
+                "source_path": os.path.basename(source_path),
+                "total_frames_in_source": total_frames,
+                "frames_analyzed": analyzed_frames,
+                "video_fps": round(fps, 1),
+                "processing_fps": measured_fps,
+                "avg_inference_latency_ms": avg_lat,
+                "total_detections": len(all_confs),
+                "average_confidence": avg_conf,
+                "class_distribution": class_counts,
+                "accuracy_metrics": {
+                    "mAP50": "Unavailable — ground-truth annotations required (open road video)",
+                    "precision": "Unavailable — ground-truth annotations required",
+                    "recall": "Unavailable — ground-truth annotations required",
+                    "f1_score": "Unavailable — ground-truth annotations required"
+                },
+                "parameters_used": {
+                    "confidence_threshold": conf_thresh,
+                    "iou_threshold": iou_thresh,
+                    "frame_skip": frame_skip,
+                    "model_used": "yolov8n.pt (Pretrained COCO)"
+                }
+            }
+        else:
+            return {"ok": False, "error": "Evaluation for folder datasets requires dataset validation."}
 
         th = threading.Thread(target=_train_worker, daemon=True)
         th.start()

@@ -611,34 +611,115 @@
     <!-- 2. AI PERCEPTION & MULTI-CAMERA RIG VIEW -->
     <div class="tab-view" id="view-perception" hidden>
       <div class="research-container">
+        <!-- Dashboard Header & Top Status Badges -->
         <div class="research-header-row">
           <div>
-            <span class="eyebrow">COMPUTER VISION & PERCEPTION PIPELINE</span>
+            <span class="eyebrow">COMPUTER VISION & SENSOR PERCEPTION PIPELINE</span>
             <h2>Multi-Camera Rig & Obstacle Detection Console</h2>
-            <p class="research-subtitle">Real pretrained YOLOv8 model inference with Indian road obstacle taxonomy, multi-object tracking, and motion prediction.</p>
+            <p class="research-subtitle">Real pretrained YOLOv8 inference with multi-object tracking, pedestrian crossing envelope analysis, synchronized 4-camera views, and honest MathWorks co-simulation telemetry.</p>
           </div>
           <div class="header-action-group">
             <span class="badge-pill badge-live" id="backendHealthBadge">BACKEND: CONNECTING...</span>
             <span class="badge-pill badge-live" id="modelStatusBadge">ENGINE: INITIALIZING...</span>
-            <button type="button" class="action-btn-pill active" id="liveVisionFeedBtn">🟢 Live Autonomous Vision</button>
-            <label class="action-btn-pill upload-label" title="Upload on-road MP4/AVI/MOV/MKV/WEBM for inference">
-              <span>📹 Upload On-Road Video</span>
-              <input type="file" id="videoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
-            </label>
-            <button type="button" class="action-btn-pill" id="testDetectionBtn">⚡ Test Frame Detection</button>
-            <button type="button" class="action-btn-pill secondary" id="clearAnalysisBtn">⟲ Clear</button>
+            <span class="badge-pill badge-simulated" id="mathworksGlobalBadge">MATHWORKS: INSPECTING...</span>
+          </div>
+        </div>
+
+        <!-- Interactive Video Playback & Perception Control Deck -->
+        <div class="perception-control-deck">
+          <!-- Video Source Selector & Upload Group -->
+          <div class="control-deck-row primary">
+            <div class="video-select-group">
+              <label for="videoSelectDropdown" class="control-label">ACTIVE ROAD VIDEO SOURCE:</label>
+              <select id="videoSelectDropdown" class="video-select-dropdown" title="Select an existing uploaded road video or upload a new file">
+                <option value="">Loading available road videos...</option>
+              </select>
+            </div>
+
+            <div class="deck-btn-group">
+              <button type="button" class="deck-btn play-btn" id="videoPlayBtn" title="Start or resume video playback & AI inference">
+                <span class="btn-icon">▶</span> Play / Resume
+              </button>
+              <button type="button" class="deck-btn pause-btn" id="videoPauseBtn" title="Pause playback and freeze current frame detection">
+                <span class="btn-icon">⏸</span> Pause
+              </button>
+              <button type="button" class="deck-btn stop-btn" id="videoStopBtn" title="Stop playback and rewind to start">
+                <span class="btn-icon">⏹</span> Stop
+              </button>
+              <button type="button" class="deck-btn restart-btn" id="videoRestartBtn" title="Restart playback from frame 0">
+                <span class="btn-icon">⟲</span> Restart
+              </button>
+              <label class="deck-btn upload-btn" title="Upload road MP4/AVI/MOV/MKV/WEBM for real YOLO inference">
+                <span class="btn-icon">📹</span> Upload On-Road Video
+                <input type="file" id="videoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
+              </label>
+              <button type="button" class="deck-btn test-btn" id="testDetectionBtn" title="Run single forward-pass test on current frame">
+                <span class="btn-icon">⚡</span> Test Frame Detection
+              </button>
+              <button type="button" class="deck-btn clear-btn" id="clearAnalysisBtn" title="Clear current analysis and return to standby">
+                <span class="btn-icon">↺</span> Clear
+              </button>
+              <button type="button" class="deck-btn mode-btn active" id="liveVisionFeedBtn" title="Toggle between uploaded video and simulated autonomous vision">
+                <span class="btn-icon">🟢</span> Autonomous Stream Mode
+              </button>
+            </div>
+          </div>
+
+          <!-- Timeline Scrubber & Fine-Tuning Bar -->
+          <div class="control-deck-row scrubber-row">
+            <div class="scrubber-track-group">
+              <input type="range" id="videoTimelineSeeker" class="video-scrubber-slider" min="0" max="100" value="0" step="0.1" title="Seek video playback position">
+              <div class="scrubber-time-tags">
+                <span id="videoTimeDisplay" class="time-readout">00:00.0 / 00:00.0</span>
+                <span id="videoFrameDisplay" class="frame-readout">FRAME: #0000 / #0000</span>
+                <span id="videoSyncStatusBadge" class="sync-readout">SYNC: MASTER CLOCK LOCK</span>
+              </div>
+            </div>
+
+            <div class="playback-tuning-group">
+              <div class="tuning-chip">
+                <label for="playbackSpeedSelect">SPEED:</label>
+                <select id="playbackSpeedSelect" class="tuning-select">
+                  <option value="0.5">0.5x</option>
+                  <option value="1.0" selected>1.0x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2.0">2.0x</option>
+                </select>
+              </div>
+
+              <div class="tuning-chip" title="Confidence threshold for YOLO bounding boxes">
+                <label for="confThreshInput">CONF:</label>
+                <input type="range" id="confThreshInput" min="15" max="85" value="35" class="tuning-range">
+                <span id="confThreshVal" class="tuning-val">0.35</span>
+              </div>
+
+              <div class="tuning-chip" title="IoU non-maximum suppression / tracker matching threshold">
+                <label for="iouThreshInput">IoU:</label>
+                <input type="range" id="iouThreshInput" min="10" max="70" value="25" class="tuning-range">
+                <span id="iouThreshVal" class="tuning-val">0.25</span>
+              </div>
+
+              <div class="tuning-chip" title="Frame sampling interval for deep model evaluation">
+                <label for="frameSkipSelect">SKIP:</label>
+                <select id="frameSkipSelect" class="tuning-select">
+                  <option value="1">1 (All Frames)</option>
+                  <option value="2" selected>2 (Smooth 15 FPS)</option>
+                  <option value="4">4 (Fast Scan)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
 
         <div id="uploadProgressStatus" class="upload-progress-banner" style="display:none;"></div>
 
-        <!-- Camera Rig Grid -->
+        <!-- Synchronized 4-Camera Rig Grid -->
         <div class="camera-rig-grid">
-          <!-- Main Front Camera -->
+          <!-- Main Front Camera (Primary Sensor) -->
           <div class="camera-feed-card main-front">
             <div class="feed-header">
               <span class="feed-source-tag live">CAMERA 01 (FRONT) — PRIMARY SENSOR</span>
-              <span class="feed-badge live" id="frontCamSourceBadge">SOURCE: LIVE AUTONOMOUS CAMERA SENSOR</span>
+              <span class="feed-badge live" id="frontCamSourceBadge">SOURCE: ACTUAL UPLOADED ROAD VIDEO</span>
             </div>
             <div class="feed-viewport">
               <canvas id="frontCamLiveCanvas" width="640" height="360" class="feed-stream-canvas"></canvas>
@@ -653,108 +734,158 @@
               <div id="frontCamPlaceholder" class="feed-placeholder" hidden>
                 <div class="placeholder-icon">📷</div>
                 <div class="placeholder-text">Front Autonomous Camera Standby</div>
-                <small>Upload an on-road video (MP4/AVI/MOV) or click "Test Frame Detection" to run real YOLO inference.</small>
+                <small>Select an uploaded road video or click "Upload On-Road Video" for real-time YOLO perception.</small>
               </div>
             </div>
             <div class="feed-footer">
               <span>FOV: 120° Wide-Angle HD</span>
-              <span>Input: 640x640 Tensor</span>
-              <span id="videoSourceTypeLabel">STATUS: ACTIVE INFERENCE (YOLOv8 DETECTIONS & TRACKING)</span>
+              <span id="frontCamResolution">INPUT: 848x478 (TENSOR RESIZE 640x640)</span>
+              <span id="videoSourceTypeLabel">STATUS: REAL YOLOv8 DETECTION &amp; BYTE TRACKING</span>
             </div>
           </div>
 
-          <!-- Peripheral / Optional Unconfigured Cameras -->
+          <!-- Peripheral Camera Rig Column (Rear, Left Blind-Spot, Right Shoulder) -->
           <div class="peripheral-cameras-column">
-            <div class="camera-feed-card peripheral">
+            <!-- Camera 02: Rear Camera -->
+            <div class="camera-feed-card peripheral" id="rearCamCard">
               <div class="feed-header">
-                <span class="feed-source-tag not-configured">CAMERA 02 (REAR)</span>
-                <span class="feed-badge not-configured">NOT CONFIGURED</span>
+                <span class="feed-source-tag peripheral-tag">CAMERA 02 (REAR)</span>
+                <div class="feed-header-actions">
+                  <span class="feed-badge live" id="rearCamSourceBadge">SOURCE: SIMULATED REAR VIEW (MIRRORED)</span>
+                  <label class="cam-attach-btn" title="Upload dedicated rear camera video feed">
+                    <span>📹 Attach</span>
+                    <input type="file" id="rearVideoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
+                  </label>
+                </div>
               </div>
               <div class="feed-viewport small">
-                <div class="feed-placeholder">
-                  <div class="placeholder-icon">🚘</div>
-                  <div class="placeholder-text">Rear Corridor View</div>
-                  <small>No physical rear camera attached to system</small>
-                </div>
+                <canvas id="rearCamCanvas" width="480" height="270" class="feed-stream-canvas"></canvas>
+                <video id="rearCamVideo" class="feed-stream-video" playsinline muted loop hidden></video>
+                <div class="feed-notice-badge">Simulated rear-mirror projection — Not physical rear hardware sensor</div>
+              </div>
+              <div class="feed-footer">
+                <span id="rearCamFooterTime">TIME: 00:00.0s</span>
+                <span id="rearCamFooterSync">SYNC: DERIVED REAL-TIME ALIGNED</span>
+                <span>FOV: 140° REVERSE</span>
               </div>
             </div>
 
-            <div class="camera-feed-card peripheral">
+            <!-- Camera 03: Left Blind-Spot Camera -->
+            <div class="camera-feed-card peripheral" id="leftCamCard">
               <div class="feed-header">
-                <span class="feed-source-tag not-configured">CAMERA 03 (LEFT BLIND-SPOT)</span>
-                <span class="feed-badge not-configured">NOT CONFIGURED</span>
+                <span class="feed-source-tag peripheral-tag">CAMERA 03 (LEFT BLIND-SPOT)</span>
+                <div class="feed-header-actions">
+                  <span class="feed-badge live" id="leftCamSourceBadge">SOURCE: SIMULATED LEFT FLANK</span>
+                  <label class="cam-attach-btn" title="Upload dedicated left blind-spot video feed">
+                    <span>📹 Attach</span>
+                    <input type="file" id="leftVideoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
+                  </label>
+                </div>
               </div>
               <div class="feed-viewport small">
-                <div class="feed-placeholder">
-                  <div class="placeholder-icon">🛵</div>
-                  <div class="placeholder-text">Left Flank View</div>
-                  <small>No physical left camera attached to system</small>
-                </div>
+                <canvas id="leftCamCanvas" width="480" height="270" class="feed-stream-canvas"></canvas>
+                <video id="leftCamVideo" class="feed-stream-video" playsinline muted loop hidden></video>
+                <div class="feed-notice-badge">Left flank crop &amp; radar zone — Do not claim blind-spot clearance</div>
+              </div>
+              <div class="feed-footer">
+                <span id="leftCamFooterTime">TIME: 00:00.0s</span>
+                <span id="leftCamFooterRadar">RADAR: FLANK MONITORING</span>
+                <span>FOV: 90° LEFT FLANK</span>
               </div>
             </div>
 
-            <div class="camera-feed-card peripheral">
+            <!-- Camera 04: Right Shoulder Camera -->
+            <div class="camera-feed-card peripheral" id="rightCamCard">
               <div class="feed-header">
-                <span class="feed-source-tag not-configured">CAMERA 04 (RIGHT SHOULDER)</span>
-                <span class="feed-badge not-configured">NOT CONFIGURED</span>
+                <span class="feed-source-tag peripheral-tag">CAMERA 04 (RIGHT SHOULDER)</span>
+                <div class="feed-header-actions">
+                  <span class="feed-badge live" id="rightCamSourceBadge">SOURCE: SIMULATED RIGHT SHOULDER</span>
+                  <label class="cam-attach-btn" title="Upload dedicated right shoulder video feed">
+                    <span>📹 Attach</span>
+                    <input type="file" id="rightVideoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
+                  </label>
+                </div>
               </div>
               <div class="feed-viewport small">
-                <div class="feed-placeholder">
-                  <div class="placeholder-icon">🐕</div>
-                  <div class="placeholder-text">Right Shoulder View</div>
-                  <small>No physical right camera attached to system</small>
-                </div>
+                <canvas id="rightCamCanvas" width="480" height="270" class="feed-stream-canvas"></canvas>
+                <video id="rightCamVideo" class="feed-stream-video" playsinline muted loop hidden></video>
+                <div class="feed-notice-badge">Right shoulder margin projection — Visual representation only</div>
+              </div>
+              <div class="feed-footer">
+                <span id="rightCamFooterTime">TIME: 00:00.0s</span>
+                <span id="rightCamFooterCurb">CURB CLEARANCE: ACTIVE</span>
+                <span>FOV: 90° SHOULDER</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Telemetry & Performance Row -->
+        <!-- Telemetry & Performance Row (Honest Measured Values) -->
         <div class="metrics-grid four-col">
           <div class="metric-card">
             <span class="metric-label">PERCEPTION INFERENCE TIME</span>
             <span class="metric-val" id="infTimeMetric">-- ms</span>
-            <small class="metric-hint">Measured tensor forward pass latency</small>
+            <small class="metric-hint">Measured tensor forward pass latency (PyTorch)</small>
           </div>
           <div class="metric-card">
-            <span class="metric-label">PATH PLANNING TIME</span>
-            <span class="metric-val" id="planTimeMetric">-- ms</span>
-            <small class="metric-hint">Quintic polynomial candidate solver</small>
+            <span class="metric-label">PROCESSING &amp; VIDEO FPS</span>
+            <span class="metric-val" id="procFpsMetric">-- FPS</span>
+            <small class="metric-hint"><span id="videoNativeFpsLabel">Video: 29.97 FPS</span> | Measured inference rate</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">PROCESSED FRAMES</span>
+            <span class="metric-val" id="procFramesMetric">0 / 0</span>
+            <small class="metric-hint">Frame index across active road video</small>
           </div>
           <div class="metric-card">
             <span class="metric-label">ACTIVE OBJECT TRACKER</span>
-            <span class="metric-val" style="font-size:16px;">ByteTrack (IoU + Centroid)</span>
-            <small class="metric-hint">Maintains object ID across frames</small>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">MOTION PREDICTION HORIZON</span>
-            <span class="metric-val" style="font-size:16px;">5 Steps (dt = 0.2s)</span>
-            <small class="metric-hint">Linear temporal velocity extrapolation</small>
+            <span class="metric-val" id="activeTrackerMetric" style="font-size:16px;">ByteTrack (IoU + Centroid)</span>
+            <small class="metric-hint"><span id="activeTracksCountLabel">0 active tracked objects</span></small>
           </div>
         </div>
 
-        <!-- Real-Time Collision Risk Status Banner -->
+        <!-- Real-Time Collision Risk & Pedestrian Safety Banner -->
         <div class="risk-status-banner normal" id="riskStatusBanner">
           <div class="risk-banner-main">
-            <div class="risk-banner-icon">🛡️</div>
+            <div class="risk-banner-icon" id="riskBannerIcon">🛡️</div>
             <div>
-              <h3 id="riskDecisionTitle">DECISION STATE: NORMAL</h3>
-              <p id="riskDecisionSubtitle">Perception standby. System monitoring sensors and safe roadway margins.</p>
+              <h3 id="riskDecisionTitle">DECISION STATE: NORMAL CRUISE</h3>
+              <p id="riskDecisionSubtitle">Forward travel envelope clear. Autonomous cruise tracking nominal corridor.</p>
+              <div id="riskPedestrianAlert" class="risk-pedestrian-tag" style="display:none;"></div>
             </div>
           </div>
           <div class="risk-banner-metrics">
             <div class="risk-chip">
               <span class="risk-chip-label">TARGET SPEED</span>
-              <span class="risk-chip-val" id="riskTargetSpeed">35.0 km/h</span>
+              <span class="risk-chip-val" id="riskTargetSpeed">42.0 km/h</span>
             </div>
             <div class="risk-chip">
               <span class="risk-chip-label">MIN TTC</span>
-              <span class="risk-chip-val" id="riskMinTTC">SAFE</span>
+              <span class="risk-chip-val" id="riskMinTTC">> 6.0s (SAFE)</span>
             </div>
             <div class="risk-chip">
               <span class="risk-chip-label">MIN DISTANCE</span>
-              <span class="risk-chip-val" id="riskMinDist">CLEAR</span>
+              <span class="risk-chip-val" id="riskMinDist">CLEAR [Est. Monocular]</span>
             </div>
+            <div class="risk-chip">
+              <span class="risk-chip-label">CROSSING ZONE</span>
+              <span class="risk-chip-val" id="riskCrossingZoneStatus" style="color:#00e59b;">UNOCCUPIED</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detection Summary Chips Bar -->
+        <div class="detection-summary-bar">
+          <div class="summary-chip-label">DETECTED IN SCENE:</div>
+          <div class="summary-chips-wrap" id="detectionSummaryChips">
+            <span class="summary-chip" id="chipPedestrians"><span class="chip-dot" style="background:#00e59b;"></span> Pedestrians: <b>0</b></span>
+            <span class="summary-chip" id="chipVehicles"><span class="chip-dot" style="background:#00a5ff;"></span> Vehicles: <b>0</b></span>
+            <span class="summary-chip" id="chipTwoWheelers"><span class="chip-dot" style="background:#ffbf00;"></span> Two-Wheelers: <b>0</b></span>
+            <span class="summary-chip" id="chipAnimals"><span class="chip-dot" style="background:#ff69b4;"></span> Animals: <b>0</b></span>
+            <span class="summary-chip" id="chipTrafficLights"><span class="chip-dot" style="background:#00ffff;"></span> Traffic Lights: <b>0</b></span>
+            <span class="summary-chip" id="chipTrafficSigns"><span class="chip-dot" style="background:#ffd700;"></span> Signs: <b>0</b></span>
+            <span class="summary-chip" id="chipAmbulance"><span class="chip-dot" style="background:#ff3b30;"></span> Emergency / Priority: <b>0</b></span>
+            <span class="summary-chip" id="chipHazards"><span class="chip-dot" style="background:#ff9100;"></span> Road Hazards: <b>0</b></span>
           </div>
         </div>
 
@@ -763,9 +894,9 @@
           <div class="card-header">
             <div>
               <span class="eyebrow">TEMPORAL SCENE ANALYSIS</span>
-              <h3>Active Tracked Obstacles & Motion Trajectories</h3>
+              <h3>Active Tracked Obstacles &amp; Motion Trajectories</h3>
             </div>
-            <span class="badge-pill badge-live">REAL-TIME MULTI-OBJECT TRACKING</span>
+            <span class="badge-pill badge-live" id="trackingStatusBadge">REAL-TIME MULTI-OBJECT TRACKING</span>
           </div>
           <div class="table-container">
             <table class="data-table">
@@ -775,14 +906,15 @@
                   <th>Class Label</th>
                   <th>Confidence</th>
                   <th>Corridor Centroid</th>
+                  <th>Est. Distance (Monocular)</th>
                   <th>Observed Velocity</th>
-                  <th>Motion Prediction (Short-Term Future)</th>
+                  <th>Safety Decision &amp; Action</th>
                 </tr>
               </thead>
               <tbody id="detectedObjectsTbody">
                 <tr>
-                  <td colspan="6" style="text-align:center;color:#6b8274;">
-                    Perception standby. Click 'Test Frame Detection' or upload a video.
+                  <td colspan="7" style="text-align:center;color:#6b8274;">
+                    Initializing perception model and tracking engine... Select or play a video.
                   </td>
                 </tr>
               </tbody>
@@ -790,55 +922,69 @@
           </div>
         </div>
 
-        <!-- Indian Road Obstacle Taxonomy Legend -->
+        <!-- Detection Box Colors & Safety Envelopes Legend -->
         <div class="research-card">
           <div class="card-header">
             <div>
-              <span class="eyebrow">TAXONOMY CONFIGURATION</span>
-              <h3>Indian Road Obstacle Classes & Safety Envelopes</h3>
+              <span class="eyebrow">PERCEPTION TAXONOMY &amp; COLOR LEGEND</span>
+              <h3>Bounding Box Color Envelopes &amp; Hazard Classification</h3>
             </div>
           </div>
           <div class="taxonomy-grid">
             <div class="taxonomy-chip">
-              <span class="taxonomy-icon">🚗</span>
+              <span class="legend-color-box" style="background:#00e59b;border:1px solid #00e59b;"></span>
               <div>
-                <b>Vehicle (Car/Bus/Truck)</b>
-                <small>Safety Margin: 3.5m | Speed: Dynamic</small>
+                <b>Pedestrian (Vulnerable Road User)</b>
+                <small>Green box | In Crossing Zone: EMERGENCY YIELD &amp; STOP (0 km/h) | Margin: 4.0m</small>
               </div>
             </div>
             <div class="taxonomy-chip">
-              <span class="taxonomy-icon">🛵</span>
+              <span class="legend-color-box" style="background:#00a5ff;border:1px solid #00a5ff;"></span>
               <div>
-                <b>Motorcycle / Bicycle</b>
-                <small>Safety Margin: 2.5m | Speed: Agile filtering</small>
+                <b>Vehicle (Car / Bus / Truck / Auto-rickshaw)</b>
+                <small>Cyan-Blue box | In-Lane: Safe Following (35-42 km/h) | Adjacent Lane: Nominal</small>
               </div>
             </div>
             <div class="taxonomy-chip">
-              <span class="taxonomy-icon">🚶</span>
+              <span class="legend-color-box" style="background:#ff3b30;border:1px solid #ff3b30;"></span>
               <div>
-                <b>Pedestrian</b>
-                <small>Safety Margin: 4.0m | Speed: 1.2 m/s</small>
+                <b>Ambulance / Emergency Vehicle / In-Path Stop</b>
+                <small>Red box / Red Corridor | Priority Vehicle Yield Margin | Imminent Conflict Hold</small>
               </div>
             </div>
             <div class="taxonomy-chip">
-              <span class="taxonomy-icon">🐂</span>
+              <span class="legend-color-box" style="background:#ffbf00;border:1px solid #ffbf00;"></span>
               <div>
-                <b>Dog / Cattle</b>
-                <small>Safety Margin: 5.0m | High Uncertainty</small>
+                <b>Motorcycle / Bicycle (Two-Wheelers)</b>
+                <small>Amber box | Agile filtering road user | Margin: 2.5m | Speed: Dynamic</small>
               </div>
             </div>
             <div class="taxonomy-chip">
-              <span class="taxonomy-icon">🕳️</span>
+              <span class="legend-color-box" style="background:#ff69b4;border:1px solid #ff69b4;"></span>
               <div>
-                <b>Pothole / Road Damage</b>
-                <small>Safety Margin: 1.5m | Lateral Evasion</small>
+                <b>Dog / Cattle (Animal Crossing)</b>
+                <small>Pink box | Unpredictable lateral trajectory | Yield margin: 5.0m</small>
               </div>
             </div>
             <div class="taxonomy-chip">
-              <span class="taxonomy-icon">🚧</span>
+              <span class="legend-color-box" style="background:#ff9100;border:1px solid #ff9100;"></span>
               <div>
-                <b>Construction / Barrier</b>
-                <small>Safety Margin: 3.0m | Re-plan Route</small>
+                <b>Pothole / Road Damage / Barrier</b>
+                <small>Orange box | Surface crater or construction obstruction | Lateral evasion</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="legend-color-box" style="background:#00ffff;border:1px solid #00ffff;"></span>
+              <div>
+                <b>Traffic Light (Signal State)</b>
+                <small>Cyan box | Intersection signal monitoring | Red: Stop | Green: Proceed</small>
+              </div>
+            </div>
+            <div class="taxonomy-chip">
+              <span class="legend-color-box" style="background:#ffd700;border:1px solid #ffd700;"></span>
+              <div>
+                <b>Traffic Sign (Regulatory / Warning)</b>
+                <small>Gold box | Stop / speed limit / pedestrian crossing sign recognition</small>
               </div>
             </div>
           </div>
