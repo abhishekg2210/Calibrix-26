@@ -165,11 +165,61 @@ def api_perception_status():
     return jsonify(ok=True, perception=perception_service.get_status())
 
 
+@autonomous_bp.get("/api/autonomous/preset-images")
+def api_preset_images():
+    """Returns metadata for the 5 canonical Indian road scenario test images."""
+    return jsonify(
+        ok=True,
+        presets=[
+            {
+                "id": "preset_pedestrian",
+                "name": "Case 1: Unmarked Village Road (Pedestrian Crossing)",
+                "category": "Vulnerable Road User",
+                "description": "Pedestrian crossing abruptly across rural roadway without sidewalks or lane markings.",
+                "url": "/static/images/scenarios/preset_pedestrian.jpg",
+                "expected_decision": "STOP / YIELD"
+            },
+            {
+                "id": "preset_cattle",
+                "name": "Case 2: Sudden Cattle Crossing Event",
+                "category": "Animal Crossing",
+                "description": "Stray cattle (cow) obstructing ego corridor with unpredictable lateral movements.",
+                "url": "/static/images/scenarios/preset_cattle.jpg",
+                "expected_decision": "STOP & WAIT"
+            },
+            {
+                "id": "preset_traffic",
+                "name": "Case 3: Dense Market Mixed Traffic",
+                "category": "Mixed Flow & VRU",
+                "description": "Auto-rickshaws, parked vehicles, and motorcycles weaving through dense commercial corridor.",
+                "url": "/static/images/scenarios/preset_traffic.jpg",
+                "expected_decision": "SLOW DOWN / GAP NAVIGATION"
+            },
+            {
+                "id": "preset_pothole",
+                "name": "Case 4: Unstructured Road with Severe Potholes",
+                "category": "Road Damage Hazard",
+                "description": "Deep asphalt crater on lane centerline requiring smooth lateral lattice evasion.",
+                "url": "/static/images/scenarios/preset_pothole.jpg",
+                "expected_decision": "LATERAL REPLAN"
+            },
+            {
+                "id": "preset_merge",
+                "name": "Case 5: Busy Urban Intersection & Highway Merge",
+                "category": "Unregulated Intersection",
+                "description": "Unsignalized intersection with two-wheeler merging diagonally from dirt shoulder.",
+                "url": "/static/images/scenarios/preset_merge.jpg",
+                "expected_decision": "SAFE FOLLOWING"
+            }
+        ]
+    )
+
+
 @autonomous_bp.post("/api/autonomous/detect-frame")
 def api_detect_frame():
     """
     Runs perception, tracking, risk assessment, and candidate path planning
-    on a single frame (supports base64 image payload or multipart image upload).
+    on a single frame (supports base64 image payload, multipart image upload, or preset name).
     """
     image_bytes = None
 
@@ -177,14 +227,23 @@ def api_detect_frame():
         image_bytes = request.files["image"].read()
     else:
         data = request.get_json(silent=True) or {}
-        b64_str = data.get("image_base64", "")
-        if b64_str:
-            if "," in b64_str:
-                b64_str = b64_str.split(",")[1]
-            try:
-                image_bytes = base64.b64decode(b64_str)
-            except Exception:
-                pass
+        preset_id = request.args.get("preset") or data.get("preset")
+        if preset_id:
+            preset_file = f"{preset_id}.jpg" if not preset_id.endswith(".jpg") else preset_id
+            preset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "images", "scenarios", preset_file)
+            if os.path.exists(preset_path):
+                with open(preset_path, "rb") as pf:
+                    image_bytes = pf.read()
+
+        if not image_bytes:
+            b64_str = data.get("image_base64", "")
+            if b64_str:
+                if "," in b64_str:
+                    b64_str = b64_str.split(",")[1]
+                try:
+                    image_bytes = base64.b64decode(b64_str)
+                except Exception:
+                    pass
 
     if not image_bytes:
         # Fallback to creating a synthetic demonstration road frame
@@ -375,9 +434,32 @@ def api_video_stream(job_id: str):
     if not job or not job.get("video_path") or not os.path.exists(job["video_path"]):
         return jsonify(ok=False, error="Video file not found."), 404
     video_path = job["video_path"]
+    return send_from_directory(directory, filename, mimetype="video/mp4")
+
+
+@autonomous_bp.get("/api/autonomous/video/download-detected/<job_id>")
+def api_download_detected_video(job_id: str):
+    """Downloads the annotated video file with drawn bounding boxes, track labels, and FPS overlay."""
+    job = video_analysis_service.get_job(job_id)
+    if not job:
+        return jsonify(ok=False, error="Job not found."), 404
+
+    video_path = job.get("annotated_video_path")
+    if not video_path or not os.path.exists(video_path):
+        res = job.get("result") or {}
+        video_path = res.get("annotated_video_path")
+
+    if not video_path or not os.path.exists(video_path):
+        cand_name = f"{os.path.splitext(job['filename'])[0]}_detected.mp4"
+        cand_path = os.path.join(UPLOAD_VIDEOS_DIR, cand_name)
+        if os.path.exists(cand_path):
+            video_path = cand_path
+        else:
+            return jsonify(ok=False, error="Annotated video not found or analysis still processing."), 404
+
     directory = os.path.dirname(video_path)
     filename = os.path.basename(video_path)
-    return send_from_directory(directory, filename, mimetype="video/mp4")
+    return send_from_directory(directory, filename, as_attachment=True, download_name=filename, mimetype="video/mp4")
 
 
 @autonomous_bp.get("/api/autonomous/videos")
@@ -539,6 +621,13 @@ def api_simulink_step():
     risk = str(data.get("risk_level", "NORMAL"))
     res = simulink_service.step_simulation(steer, target_v, dt=dt, risk_level=risk)
     return jsonify(res)
+
+
+@autonomous_bp.get("/api/autonomous/simulink/export-matlab")
+def api_simulink_export_matlab():
+    """Exports the MATLAB/Simulink co-simulation bridge script for download."""
+    simulink_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "simulink")
+    return send_from_directory(simulink_dir, "simulink_bridge.m", as_attachment=True, download_name="simulink_bridge.m")
 
 
 @autonomous_bp.get("/api/autonomous/pathweaver/info")

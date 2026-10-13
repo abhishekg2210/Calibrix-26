@@ -6,7 +6,7 @@ import zipfile
 import math
 import requests
 from datetime import datetime, timezone
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, send_file
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, send_file, send_from_directory
 from dotenv import load_dotenv
 
 # Load environment variables from .env
@@ -61,6 +61,18 @@ def register():
     if session.get("user_id"):
         return redirect(url_for("home"))
     return render_template("register.html")
+
+@app.get("/sim")
+@app.get("/sim/")
+@login_required
+def serve_sim():
+    sim_dir = os.path.join(app.root_path, "static", "sim")
+    return send_from_directory(sim_dir, "index.html")
+
+@app.get("/sim/<path:filename>")
+def serve_sim_static(filename):
+    sim_dir = os.path.join(app.root_path, "static", "sim")
+    return send_from_directory(sim_dir, filename)
 
 # -----------------------------------------------------------------------------
 # AUTHENTICATION API

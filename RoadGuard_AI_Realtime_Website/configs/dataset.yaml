@@ -1,0 +1,22 @@
+# ============================================================
+# YOLO Dataset Configuration
+# ============================================================
+
+path: data/processed          # Root dataset directory
+train: images/train           # Training images (relative to path)
+val: images/val               # Validation images (relative to path)
+test: images/test             # Test images (relative to path)
+
+# Number of classes
+nc: 8
+
+# Class names
+names:
+  0: pedestrian
+  1: bicycle
+  2: car
+  3: motorcycle
+  4: bus
+  5: truck
+  6: traffic_light
+  7: stop_sign

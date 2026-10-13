@@ -1,0 +1,167 @@
+# ============================================================
+# Autonomous Vehicle Obstacle Detection using YOLO
+# Training Configuration
+# ============================================================
+
+project:
+  name: "autonomous-obstacle-detection"
+  version: "1.0.0"
+  description: "YOLOv8-based obstacle detection for autonomous vehicles"
+  seed: 42
+
+# ─── Dataset ────────────────────────────────────────────────
+dataset:
+  name: "coco_vehicle"                  # coco_vehicle | kitti | bdd100k
+  data_yaml: "configs/dataset.yaml"
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  annotations_dir: "data/annotations"
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+
+  # COCO class IDs to keep (vehicle & pedestrian relevant)
+  coco_classes:
+    - 0   # person
+    - 1   # bicycle
+    - 2   # car
+    - 3   # motorcycle
+    - 5   # bus
+    - 7   # truck
+    - 9   # traffic light
+    - 11  # stop sign
+
+  # Target class names for this project
+  class_names:
+    - pedestrian
+    - bicycle
+    - car
+    - motorcycle
+    - bus
+    - truck
+    - traffic_light
+    - stop_sign
+
+  num_classes: 8
+
+# ─── Model ──────────────────────────────────────────────────
+model:
+  architecture: "yolov8m"               # yolov8n | yolov8s | yolov8m | yolov8l | yolov8x
+  pretrained: true
+  pretrained_weights: "yolov8m.pt"
+  weights_dir: "models/weights"
+  checkpoints_dir: "models/checkpoints"
+  input_size: 640                        # image size (pixels)
+
+# ─── Training ───────────────────────────────────────────────
+training:
+  epochs: 100
+  batch_size: 16
+  workers: 8
+  device: "0"                            # "0" for GPU 0, "cpu" for CPU, "0,1" for multi-GPU
+  amp: true                              # Automatic Mixed Precision (FP16)
+  cache: false                           # Cache images in RAM ("ram") or disk ("disk")
+  resume: false                          # Resume training from last checkpoint
+  project_dir: "runs/train"
+  experiment_name: "obstacle_detection_v1"
+
+  # Optimizer
+  optimizer: "AdamW"                     # SGD | Adam | AdamW | RMSProp
+  lr0: 0.001                             # Initial learning rate
+  lrf: 0.01                              # Final learning rate fraction
+  momentum: 0.937
+  weight_decay: 0.0005
+  warmup_epochs: 3.0
+  warmup_momentum: 0.8
+  warmup_bias_lr: 0.1
+
+  # Scheduler
+  cos_lr: true                           # Cosine LR scheduler
+
+  # Early Stopping
+  patience: 20                           # Epochs without improvement before stopping
+
+  # Loss weights
+  box_loss_gain: 7.5
+  cls_loss_gain: 0.5
+  dfl_loss_gain: 1.5
+
+# ─── Augmentation ───────────────────────────────────────────
+augmentation:
+  hsv_h: 0.015                           # Hue augmentation
+  hsv_s: 0.7                             # Saturation augmentation
+  hsv_v: 0.4                             # Value (brightness) augmentation
+  degrees: 0.0                           # Rotation degrees
+  translate: 0.1                         # Translation fraction
+  scale: 0.5                             # Scale gain
+  shear: 0.0                             # Shear degrees
+  perspective: 0.0                       # Perspective distortion
+  flipud: 0.0                            # Vertical flip probability
+  fliplr: 0.5                            # Horizontal flip probability
+  mosaic: 1.0                            # Mosaic augmentation probability
+  mixup: 0.0                             # Mixup augmentation probability
+  copy_paste: 0.0                        # Copy-paste augmentation probability
+
+# ─── Evaluation ─────────────────────────────────────────────
+evaluation:
+  conf_threshold: 0.25                   # Confidence threshold
+  iou_threshold: 0.45                    # IoU threshold for NMS
+  max_det: 300                           # Maximum detections per image
+  save_plots: true
+  save_json: true
+  save_txt: false
+  output_dir: "runs/eval"
+
+# ─── Inference ──────────────────────────────────────────────
+inference:
+  model_path: "models/weights/best.pt"
+  conf_threshold: 0.35
+  iou_threshold: 0.45
+  max_det: 100
+  device: "0"
+  half: true                             # FP16 inference
+  show_labels: true
+  show_conf: true
+  show_fps: true
+  line_thickness: 2
+  output_dir: "runs/inference"
+
+  # Class colors (BGR format for OpenCV)
+  class_colors:
+    pedestrian: [0, 255, 0]             # Green
+    bicycle: [255, 165, 0]              # Orange
+    car: [0, 0, 255]                    # Red
+    motorcycle: [255, 0, 255]           # Magenta
+    bus: [0, 255, 255]                  # Cyan
+    truck: [128, 0, 128]               # Purple
+    traffic_light: [255, 255, 0]        # Yellow
+    stop_sign: [0, 128, 255]            # Light Blue
+
+# ─── Deployment ─────────────────────────────────────────────
+deployment:
+  onnx:
+    opset: 17
+    simplify: true
+    dynamic: false
+    output_path: "models/weights/best.onnx"
+
+  tensorrt:
+    workspace: 4                         # GB
+    fp16: true
+    int8: false
+    output_path: "models/weights/best.engine"
+
+  api:
+    host: "0.0.0.0"
+    port: 8000
+    workers: 1
+    reload: false
+    max_file_size_mb: 50
+
+# ─── Logging ────────────────────────────────────────────────
+logging:
+  level: "INFO"                          # DEBUG | INFO | WARNING | ERROR
+  log_dir: "logs"
+  log_file: "training.log"
+  console: true
+  save_period: 10                        # Save checkpoint every N epochs

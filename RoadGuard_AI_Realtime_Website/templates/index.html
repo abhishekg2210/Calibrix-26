@@ -38,34 +38,177 @@
 
     <!-- Research Prototype Navigation Tabs -->
     <nav class="research-nav-tabs" id="researchNavTabs">
-      <button type="button" class="nav-tab active" data-tab="tab-cockpit">
-        <span class="tab-icon">🗺️</span> Map Cockpit
-      </button>
-      <button type="button" class="nav-tab" data-tab="tab-driving-sim">
-        <span class="tab-icon">🚗</span> Driving Simulation
+      <button type="button" class="nav-tab active" data-tab="tab-driving-sim">
+        <span class="tab-icon">🚗</span> Interactive Driving Simulation (PS 06)
       </button>
       <button type="button" class="nav-tab" data-tab="tab-perception">
-        <span class="tab-icon">🎯</span> AI Perception & Multi-Cam
+        <span class="tab-icon">🎯</span> Deep Learning Image Perception (YOLOv8)
       </button>
       <button type="button" class="nav-tab" data-tab="tab-simulink">
-        <span class="tab-icon">⚡</span> MathWorks Simulink
+        <span class="tab-icon">⚡</span> MathWorks Simulink Suite (7 Tools)
+      </button>
+      <button type="button" class="nav-tab" data-tab="tab-cockpit">
+        <span class="tab-icon">🗺️</span> Map Operations &amp; Navigation
       </button>
       <button type="button" class="nav-tab" data-tab="tab-scenarios">
-        <span class="tab-icon">🎬</span> 20 Autonomous Scenarios
+        <span class="tab-icon">🎬</span> 20 Safety Scenarios Suite
       </button>
-      <button type="button" class="nav-tab" data-tab="tab-carla">
-        <span class="tab-icon">🌐</span> CARLA Simulator
-      </button>
-      <button type="button" class="nav-tab" data-tab="tab-dataset">
-        <span class="tab-icon">📊</span> Dataset & Training
-      </button>
-      <button type="button" class="nav-tab" data-tab="tab-verification">
-        <span class="tab-icon">🛡️</span> Verification Matrix
+      <button type="button" class="nav-tab" data-tab="tab-planner-lab">
+        <span class="tab-icon">🔬</span> AV Planner Lab (A*, RRT*, Lattice)
       </button>
     </nav>
 
-    <!-- 1. MAP COCKPIT VIEW (Preserves existing Leaflet interactive planner) -->
-    <div class="tab-view active" id="view-cockpit">
+    <!-- 1. INTERACTIVE DRIVING SIMULATION VIEW (PS 06) -->
+    <div class="tab-view active" id="view-driving-sim">
+      <div class="driving-sim-container">
+        <!-- Control Bar Header -->
+        <div class="sim-header-bar">
+          <div class="sim-title-group">
+            <h2><span>🚗</span> Driving Simulation — Unstructured Indian Road Corridor</h2>
+            <p>Adaptive Path Planning, Irregular Motion Prediction, Obstacle Stopping, Yield/Wait/Resume, and Dynamic Evasive Rerouting.</p>
+          </div>
+          <div class="sim-toolbar">
+            <button type="button" class="sim-btn primary" id="simPlayBtn"><span>▶</span> Start Simulation</button>
+            <button type="button" class="sim-btn" id="simResetBtn"><span>↺</span> Reset Scenario</button>
+            
+            <select id="simScenarioSelect" class="sim-control-select" title="Select Canonical Indian Road Scenario">
+              <option value="scenario_1" selected>Scenario 1: Pedestrian Suddenly Crossing (Stop, Wait & Resume)</option>
+              <option value="scenario_2">Scenario 2: Motorcycle Merging From Shoulder (Safe Following)</option>
+              <option value="scenario_3">Scenario 3: Severe Pothole Avoidance (Lateral Replan)</option>
+              <option value="scenario_4">Scenario 4: Stray Cattle Wandering On Road (Stop, Wait & Resume)</option>
+              <option value="scenario_5">Scenario 5: Dense Market Traffic & Road Blockage (Gap Navigation)</option>
+            </select>
+
+            <select id="simSpeedSelect" class="sim-control-select" title="Simulation Clock Speed">
+              <option value="0.5">Speed: 0.5x</option>
+              <option value="1.0" selected>Speed: 1.0x (Normal)</option>
+              <option value="2.0">Speed: 2.0x</option>
+              <option value="4.0">Speed: 4.0x</option>
+            </select>
+
+            <select id="simPlannerSelect" class="sim-control-select" title="Active Path Planner Strategy">
+              <option value="frenet_lattice" selected>Frenet Optimal Trajectory (FOT Lattice)</option>
+              <option value="pathweaver">Dynamic Lattice PathWeaver Mode</option>
+              <option value="emergency_brake">Rule-Based Safe Stop Fallback</option>
+            </select>
+
+            <select id="simObstacleTypeSelect" class="sim-control-select" title="Select obstacle to spawn">
+              <option value="pedestrian">Pedestrian</option>
+              <option value="cattle">Stray Cattle (Cow)</option>
+              <option value="motorcycle">Motorcycle</option>
+              <option value="auto_rickshaw">Auto-Rickshaw</option>
+              <option value="pothole">Pothole</option>
+              <option value="blockade">Road Blockade</option>
+            </select>
+
+            <button type="button" class="sim-btn" id="simAddObstacleBtn" title="Spawn selected obstacle ahead"><span>＋</span> Add Obstacle Ahead</button>
+            <button type="button" class="sim-btn secondary" id="simClearCustomBtn" title="Clear added custom obstacles"><span>⟲</span> Clear Custom</button>
+            <button type="button" class="sim-btn" id="simCompareBtn" title="Compare Adaptive Planner vs Baseline Constant Velocity"><span>⚖</span> Compare Planners</button>
+          </div>
+        </div>
+
+        <!-- Quick Canonical Scenario Buttons Bar -->
+        <div class="sim-quick-scenarios-bar">
+          <span style="font-size: 11px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; margin-right: 4px;">5 CANONICAL SCENARIOS:</span>
+          <button type="button" class="sim-quick-scen-btn active" data-scen="scenario_1">🚶 Case 1: Village Pedestrian Crossing</button>
+          <button type="button" class="sim-quick-scen-btn" data-scen="scenario_2">🏍️ Case 2: Highway Motorcycle Merge</button>
+          <button type="button" class="sim-quick-scen-btn" data-scen="scenario_3">🕳️ Case 3: Severe Pothole Replan</button>
+          <button type="button" class="sim-quick-scen-btn" data-scen="scenario_4">🐄 Case 4: Stray Cattle Crossing Event</button>
+          <button type="button" class="sim-quick-scen-btn" data-scen="scenario_5">🛺 Case 5: Dense Market Mixed Traffic</button>
+        </div>
+
+        <!-- Simulation Grid Layout -->
+        <div class="sim-grid-layout">
+          <!-- Viewport Column -->
+          <div class="sim-viewport-wrapper">
+            <div class="sim-canvas-card">
+              <span class="sim-viewport-tag">CANVAS: INTERACTIVE KINEMATIC SIMULATION (CLICK ON ROAD TO DROP OBSTACLE / CLICK CAR TO START/PAUSE)</span>
+              <canvas id="drivingSimCanvas"></canvas>
+            </div>
+
+            <!-- Legend Bar -->
+            <div class="sim-legend-bar">
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:#06b6d4;"></span> Selected Optimal Trajectory</div>
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:rgba(56, 189, 248, 0.4); border-top: 1px dashed #38bdf8;"></span> Feasible Lattice Corridors</div>
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:rgba(244, 63, 94, 0.4); border-top: 1px dashed #f43f5e;"></span> Collision-Prone Candidates</div>
+              <div class="sim-legend-item"><span class="sim-legend-dot" style="background:#0284c7;"></span> Autonomous Ego Vehicle</div>
+              <div class="sim-legend-item"><span class="sim-legend-dot" style="background:rgba(239, 68, 68, 0.4); border:1px solid #ef4444;"></span> Hazard Exclusion Zone</div>
+              <div class="sim-legend-item"><span class="sim-legend-line" style="background:#10b981;"></span> Target Destination</div>
+            </div>
+          </div>
+
+          <!-- Decision & Telemetry Sidebar Rail -->
+          <div class="sim-side-rail">
+            <!-- Decision Banner Card -->
+            <div class="sim-decision-card">
+              <div class="sim-card-heading">ACTIVE PLANNING DECISION</div>
+              <div id="simDecisionBadge" class="sim-decision-badge nominal">NOMINAL CRUISE</div>
+              <div id="simDecisionDesc" class="sim-decision-desc">Clear corridor ahead. Cruising at nominal speed.</div>
+            </div>
+
+            <!-- Telemetry Readouts -->
+            <div class="sim-telemetry-grid">
+              <div class="sim-metric-tile">
+                <span class="label">VEHICLE VELOCITY</span>
+                <span class="val" id="simSpeedReadout">30.6</span><span class="unit">km/h</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">LONGITUDINAL ACCEL</span>
+                <span class="val" id="simAccelReadout">0.00</span><span class="unit">m/s²</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">STEERING ANGLE δ</span>
+                <span class="val" id="simSteeringReadout">0.0</span><span class="unit">deg</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">LATERAL OFFSET d</span>
+                <span class="val" id="simLateralOffsetReadout">0.00</span><span class="unit">m</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">TIME TO COLLISION</span>
+                <span class="val" id="simTtcReadout">> 20s</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">MIN CLEARANCE</span>
+                <span class="val" id="simClearanceReadout">> 100m</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">SIMULATION CLOCK</span>
+                <span class="val" id="simTimeReadout">0.0s</span>
+              </div>
+              <div class="sim-metric-tile">
+                <span class="label">ROUTE PROGRESS</span>
+                <span class="val" id="simProgressReadout">8.0 / 115m</span>
+              </div>
+            </div>
+
+            <!-- Active Detected Actors Table -->
+            <div class="sim-table-card">
+              <h4>DYNAMIC &amp; STATIC ROAD USERS</h4>
+              <div style="max-height: 170px; overflow-y: auto;">
+                <table class="sim-actor-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Class</th>
+                      <th>Pos (m)</th>
+                      <th>Dist</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="simActorTableBody">
+                    <tr><td colspan="5" class="table-empty">Loading obstacles...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MAP COCKPIT VIEW (Preserves existing Leaflet interactive planner) -->
+    <div class="tab-view" id="view-cockpit" hidden>
       <main class="workspace">
       <aside class="sidebar">
         <div class="section-heading">
@@ -468,155 +611,29 @@
     </main>
     </div> <!-- /#view-cockpit -->
 
-    <!-- 1B. INTERACTIVE DRIVING SIMULATION VIEW (PS 06) -->
-    <div class="tab-view" id="view-driving-sim" hidden>
-      <div class="driving-sim-container">
-        <!-- Control Bar Header -->
-        <div class="sim-header-bar">
-          <div class="sim-title-group">
-            <h2><span>🚗</span> Driving Simulation — Unstructured Indian Road Corridor</h2>
-            <p>Real-time interactive top-down simulation with moving road users, potholes, candidate trajectory lattice, and dynamic collision avoidance decisions.</p>
-          </div>
-          <div class="sim-toolbar">
-            <button type="button" class="sim-btn primary" id="simPlayBtn"><span>▶</span> Start Simulation</button>
-            <button type="button" class="sim-btn" id="simResetBtn"><span>↺</span> Reset Scenario</button>
-            
-            <select id="simScenarioSelect" class="sim-control-select" title="Select Canonical Indian Road Scenario">
-              <option value="scenario_1">Scenario 1: Pedestrian Suddenly Crossing</option>
-              <option value="scenario_2">Scenario 2: Motorcycle Merging From Shoulder</option>
-              <option value="scenario_3">Scenario 3: Severe Pothole in Corridor</option>
-              <option value="scenario_4">Scenario 4: Stray Cattle Wandering On Road</option>
-              <option value="scenario_5">Scenario 5: Dense Traffic & Road Blockage</option>
-            </select>
-
-            <select id="simSpeedSelect" class="sim-control-select" title="Simulation Clock Speed">
-              <option value="0.5">Speed: 0.5x</option>
-              <option value="1.0" selected>Speed: 1.0x (Normal)</option>
-              <option value="2.0">Speed: 2.0x</option>
-              <option value="4.0">Speed: 4.0x</option>
-            </select>
-
-            <select id="simPlannerSelect" class="sim-control-select" title="Active Path Planner Strategy">
-              <option value="frenet_lattice" selected>Frenet Optimal Trajectory (FOT Lattice)</option>
-              <option value="pathweaver">Dynamic Lattice PathWeaver Mode</option>
-              <option value="emergency_brake">Rule-Based Safe Stop Fallback</option>
-            </select>
-
-            <select id="simObstacleTypeSelect" class="sim-control-select" title="Select obstacle to spawn">
-              <option value="pedestrian">Pedestrian (Crossing)</option>
-              <option value="dog">Stray Dog (Crossing)</option>
-              <option value="cattle">Stray Cattle (Crossing)</option>
-              <option value="construction">Construction Zone</option>
-              <option value="pothole">Road Pothole</option>
-              <option value="blockade">Road Blockade</option>
-              <option value="motorcycle">Motorcycle</option>
-              <option value="auto_rickshaw">Auto-Rickshaw</option>
-            </select>
-
-            <button type="button" class="sim-btn" id="simAddObstacleBtn" title="Spawn selected obstacle ahead"><span>＋</span> Add Obstacle</button>
-            <button type="button" class="sim-btn secondary" id="simClearCustomBtn" title="Clear added custom obstacles"><span>⟲</span> Clear Custom</button>
-          </div>
-        </div>
-
-        <!-- Simulation Grid Layout -->
-        <div class="sim-grid-layout">
-          <!-- Viewport Column -->
-          <div class="sim-viewport-wrapper">
-            <div class="sim-canvas-card">
-              <span class="sim-viewport-tag">CANVAS: INTERACTIVE KINEMATIC SIMULATION (CLICK ON ROAD TO SPAWN OBSTACLES)</span>
-              <canvas id="drivingSimCanvas"></canvas>
-            </div>
-
-            <!-- Legend Bar -->
-            <div class="sim-legend-bar">
-              <div class="sim-legend-item"><span class="sim-legend-line" style="background:#06b6d4;"></span> Selected Optimal Trajectory</div>
-              <div class="sim-legend-item"><span class="sim-legend-line" style="background:rgba(56, 189, 248, 0.4); border-top: 1px dashed #38bdf8;"></span> Feasible Lattice Corridors</div>
-              <div class="sim-legend-item"><span class="sim-legend-line" style="background:rgba(244, 63, 94, 0.4); border-top: 1px dashed #f43f5e;"></span> Collision-Prone Candidates</div>
-              <div class="sim-legend-item"><span class="sim-legend-dot" style="background:#0284c7;"></span> Autonomous Ego Vehicle</div>
-              <div class="sim-legend-item"><span class="sim-legend-dot" style="background:rgba(239, 68, 68, 0.4); border:1px solid #ef4444;"></span> Hazard Exclusion Zone</div>
-              <div class="sim-legend-item"><span class="sim-legend-line" style="background:#10b981;"></span> Target Destination</div>
-            </div>
-          </div>
-
-          <!-- Decision & Telemetry Sidebar Rail -->
-          <div class="sim-side-rail">
-            <!-- Decision Banner Card -->
-            <div class="sim-decision-card">
-              <div class="sim-card-heading">ACTIVE PLANNING DECISION</div>
-              <div id="simDecisionBadge" class="sim-decision-badge nominal">NOMINAL CRUISE</div>
-              <div id="simDecisionDesc" class="sim-decision-desc">Clear corridor ahead. Cruising at nominal speed.</div>
-            </div>
-
-            <!-- Telemetry Readouts -->
-            <div class="sim-telemetry-grid">
-              <div class="sim-metric-tile">
-                <span class="label">VEHICLE VELOCITY</span>
-                <span class="val" id="simSpeedReadout">30.6</span><span class="unit">km/h</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">LONGITUDINAL ACCEL</span>
-                <span class="val" id="simAccelReadout">0.00</span><span class="unit">m/s²</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">STEERING ANGLE δ</span>
-                <span class="val" id="simSteeringReadout">0.0</span><span class="unit">deg</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">LATERAL OFFSET d</span>
-                <span class="val" id="simLateralOffsetReadout">0.00</span><span class="unit">m</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">TIME TO COLLISION</span>
-                <span class="val" id="simTtcReadout">> 20s</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">MIN CLEARANCE</span>
-                <span class="val" id="simClearanceReadout">> 100m</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">SIMULATION CLOCK</span>
-                <span class="val" id="simTimeReadout">0.0s</span>
-              </div>
-              <div class="sim-metric-tile">
-                <span class="label">ROUTE PROGRESS</span>
-                <span class="val" id="simProgressReadout">8.0 / 115m</span>
-              </div>
-            </div>
-
-            <!-- Active Detected Actors Table -->
-            <div class="sim-table-card">
-              <h4>DYNAMIC & STATIC ROAD USERS</h4>
-              <div style="max-height: 170px; overflow-y: auto;">
-                <table class="sim-actor-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Class</th>
-                      <th>Pos (m)</th>
-                      <th>Dist</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody id="simActorTableBody">
-                    <tr><td colspan="5" class="table-empty">Loading obstacles...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
+    <!-- 2. AV PLANNER LAB VIEW (jposn3r/autonomous-vehicle-simulation) -->
+    <div class="tab-view" id="view-planner-lab" hidden>
+      <div class="sim-embed-container">
+        <iframe id="plannerLabFrame" src="/sim/?mode=planner" class="sim-embed-frame" title="AV Planner Lab (A*, RRT*, Lattice, Learned Path Planning Comparison)"></iframe>
       </div>
     </div>
 
-    <!-- 2. AI PERCEPTION & MULTI-CAMERA RIG VIEW -->
+    <!-- 3. CITY COMMAND 3D DIGITAL TWIN VIEW (jposn3r/autonomous-vehicle-simulation) -->
+    <div class="tab-view" id="view-city-command" hidden>
+      <div class="sim-embed-container">
+        <iframe id="cityCommandFrame" src="/sim/?mode=city" class="sim-embed-frame" title="City Command 3D Transportation Digital Twin"></iframe>
+      </div>
+    </div>
+
+    <!-- 3. DEEP LEARNING IMAGE PERCEPTION VIEW (YOLOv8) -->
     <div class="tab-view" id="view-perception" hidden>
       <div class="research-container">
         <!-- Dashboard Header & Top Status Badges -->
         <div class="research-header-row">
           <div>
-            <span class="eyebrow">COMPUTER VISION & SENSOR PERCEPTION PIPELINE</span>
-            <h2>Real-Time Object Detection &amp; Model Training Console</h2>
-            <p class="research-subtitle">Powered by YOLOv8 Autonomous Vehicles Architecture &amp; KITTI Benchmark Model (Faris Agour). Real-time object detection on uploaded road video with frame-by-frame object detection, byte tracking, and model fine-tuning.</p>
+            <span class="eyebrow">DEEP LEARNING COMPUTER VISION &amp; PERCEPTION PIPELINE</span>
+            <h2>YOLOv8 Deep Learning Image Analysis for Unstructured Indian Roads</h2>
+            <p class="research-subtitle">Powered by YOLOv8m Autonomous Vehicles Model &amp; KITTI Benchmark (Faris Agour). Instant monocular obstacle classification, distance estimation, motion prediction vector, and collision safety decision.</p>
           </div>
           <div class="header-action-group">
             <span class="badge-pill badge-live" id="backendHealthBadge">BACKEND: CONNECTING...</span>
@@ -625,224 +642,189 @@
           </div>
         </div>
 
-        <!-- Interactive Video Playback & Perception Control Deck -->
-        <div class="perception-control-deck">
-          <!-- Video Source Selector & Upload Group -->
-          <div class="control-deck-row primary">
-            <div class="video-select-group">
-              <label for="videoSelectDropdown" class="control-label">ACTIVE ROAD VIDEO SOURCE:</label>
-              <select id="videoSelectDropdown" class="video-select-dropdown" title="Select an existing uploaded road video or upload a new file">
-                <option value="">Loading available road videos...</option>
-              </select>
+        <!-- 5 Canonical Test Scenario Image Presets (from PS 06 Specification) -->
+        <div class="research-card" style="margin-bottom: 16px;">
+          <div class="card-header" style="padding-bottom: 8px;">
+            <div>
+              <span class="eyebrow">CANONICAL ROAD SCENE PRESETS</span>
+              <h3>Select Indian Road Scene for Instant Deep Learning Evaluation</h3>
             </div>
-
-            <div class="deck-btn-group">
-              <button type="button" class="deck-btn play-btn" id="videoPlayBtn" title="Start or resume video playback & AI inference">
-                <span class="btn-icon">▶</span> Play / Resume
-              </button>
-              <button type="button" class="deck-btn pause-btn" id="videoPauseBtn" title="Pause playback and freeze current frame detection">
-                <span class="btn-icon">⏸</span> Pause
-              </button>
-              <button type="button" class="deck-btn stop-btn" id="videoStopBtn" title="Stop playback and rewind to start">
-                <span class="btn-icon">⏹</span> Stop
-              </button>
-              <button type="button" class="deck-btn restart-btn" id="videoRestartBtn" title="Restart playback from frame 0">
-                <span class="btn-icon">⟲</span> Restart
-              </button>
-              <label class="deck-btn upload-btn" title="Upload road MP4/AVI/MOV/MKV/WEBM for real YOLO inference">
-                <span class="btn-icon">📹</span> Upload On-Road Video
-                <input type="file" id="videoUploadInput" accept=".mp4,.avi,.mov,.mkv,.webm" hidden>
-              </label>
-              <button type="button" class="deck-btn train-btn" id="openTrainModalBtn" title="Train or fine-tune YOLO model with Faris Agour autonomous driving pipeline">
-                <span class="btn-icon">🚀</span> Train Model
-              </button>
-              <button type="button" class="deck-btn test-btn" id="testDetectionBtn" title="Run single forward-pass test on current frame">
-                <span class="btn-icon">⚡</span> Test Frame Detection
-              </button>
-              <button type="button" class="deck-btn clear-btn" id="clearAnalysisBtn" title="Clear current analysis and return to standby">
-                <span class="btn-icon">↺</span> Clear
-              </button>
-              <button type="button" class="deck-btn mode-btn active" id="liveVisionFeedBtn" title="Toggle between uploaded video and simulated autonomous vision">
-                <span class="btn-icon">🟢</span> Autonomous Stream Mode
-              </button>
-            </div>
+            <span class="badge-pill badge-live">5 BENCHMARKS LOADED</span>
           </div>
-
-          <!-- Timeline Scrubber & Fine-Tuning Bar -->
-          <div class="control-deck-row scrubber-row">
-            <div class="scrubber-track-group">
-              <input type="range" id="videoTimelineSeeker" class="video-scrubber-slider" min="0" max="100" value="0" step="0.1" title="Seek video playback position">
-              <div class="scrubber-time-tags">
-                <span id="videoTimeDisplay" class="time-readout">00:00.0 / 00:00.0</span>
-                <span id="videoFrameDisplay" class="frame-readout">FRAME: #0000 / #0000</span>
-                <span id="videoSyncStatusBadge" class="sync-readout">SYNC: MASTER CLOCK LOCK</span>
+          <div class="image-presets-grid" id="imagePresetsGrid">
+            <div class="image-preset-card active" data-preset="preset_pedestrian" title="Click to test Case 1: Village Pedestrian Crossing">
+              <img src="/static/images/scenarios/preset_pedestrian.jpg" class="image-preset-thumb" alt="Case 1">
+              <div class="image-preset-info">
+                <b>Case 1: Village Pedestrian</b>
+                <small>Unmarked road · Crossing pedestrian · Yield 0 km/h</small>
               </div>
             </div>
-
-            <div class="playback-tuning-group">
-              <div class="tuning-chip">
-                <label for="playbackSpeedSelect">SPEED:</label>
-                <select id="playbackSpeedSelect" class="tuning-select">
-                  <option value="0.5">0.5x</option>
-                  <option value="1.0" selected>1.0x</option>
-                  <option value="1.5">1.5x</option>
-                  <option value="2.0">2.0x</option>
-                </select>
+            <div class="image-preset-card" data-preset="preset_cattle" title="Click to test Case 2: Sudden Cattle Crossing Event">
+              <img src="/static/images/scenarios/preset_cattle.jpg" class="image-preset-thumb" alt="Case 2">
+              <div class="image-preset-info">
+                <b>Case 2: Stray Cattle Event</b>
+                <small>Unpredictable animal motion · Stop &amp; wait</small>
               </div>
-
-              <div class="tuning-chip" title="Confidence threshold for YOLO bounding boxes">
-                <label for="confThreshInput">CONF:</label>
-                <input type="range" id="confThreshInput" min="15" max="85" value="35" class="tuning-range">
-                <span id="confThreshVal" class="tuning-val">0.35</span>
+            </div>
+            <div class="image-preset-card" data-preset="preset_traffic" title="Click to test Case 3: Dense Market Mixed Traffic">
+              <img src="/static/images/scenarios/preset_traffic.jpg" class="image-preset-thumb" alt="Case 3">
+              <div class="image-preset-info">
+                <b>Case 3: Dense Market Area</b>
+                <small>Auto-rickshaws, bikes · Gap navigation</small>
               </div>
-
-              <div class="tuning-chip" title="IoU non-maximum suppression / tracker matching threshold">
-                <label for="iouThreshInput">IoU:</label>
-                <input type="range" id="iouThreshInput" min="10" max="70" value="25" class="tuning-range">
-                <span id="iouThreshVal" class="tuning-val">0.25</span>
+            </div>
+            <div class="image-preset-card" data-preset="preset_pothole" title="Click to test Case 4: Severe Potholes">
+              <img src="/static/images/scenarios/preset_pothole.jpg" class="image-preset-thumb" alt="Case 4">
+              <div class="image-preset-info">
+                <b>Case 4: Severe Potholes</b>
+                <small>Deep crater on centerline · Lateral replan</small>
               </div>
-
-              <div class="tuning-chip" title="Frame sampling interval for deep model evaluation">
-                <label for="frameSkipSelect">SKIP:</label>
-                <select id="frameSkipSelect" class="tuning-select">
-                  <option value="1">1 (All Frames)</option>
-                  <option value="2" selected>2 (Smooth 15 FPS)</option>
-                  <option value="4">4 (Fast Scan)</option>
-                </select>
+            </div>
+            <div class="image-preset-card" data-preset="preset_merge" title="Click to test Case 5: Busy Urban Intersection & Highway Merge">
+              <img src="/static/images/scenarios/preset_merge.jpg" class="image-preset-thumb" alt="Case 5">
+              <div class="image-preset-info">
+                <b>Case 5: Highway Merge</b>
+                <small>Two-wheeler entering corridor · Safe following</small>
               </div>
             </div>
           </div>
         </div>
 
-        <div id="uploadProgressStatus" class="upload-progress-banner" style="display:none;"></div>
+        <!-- Interactive Control Deck for Image Perception -->
+        <div class="perception-control-deck" style="margin-bottom: 16px;">
+          <div class="control-deck-row primary">
+            <div class="deck-btn-group" style="width: 100%; justify-content: flex-start; flex-wrap: wrap;">
+              <button type="button" class="deck-btn play-btn" id="runImageInferenceBtn" title="Run YOLOv8 deep learning forward pass on selected/uploaded image">
+                <span class="btn-icon">⚡</span> Run Deep Learning Inference
+              </button>
+              <label class="deck-btn upload-btn" title="Upload road photo (PNG/JPG/WEBP) for deep learning analysis">
+                <span class="btn-icon">📁</span> Upload Custom Road Image
+                <input type="file" id="imageUploadInput" accept="image/*" hidden>
+              </label>
+              <button type="button" class="deck-btn clear-btn" id="clearImageAnalysisBtn" title="Reset image and reload baseline">
+                <span class="btn-icon">↺</span> Reset / Clear
+              </button>
 
-        <!-- Full-Width Uploaded Video Real-Time Object Detection Viewport -->
-        <div class="camera-rig-grid">
-          <!-- Primary Uploaded Video Screen -->
+              <div class="playback-tuning-group" style="margin-left: auto;">
+                <div class="tuning-chip" title="Confidence threshold for YOLO bounding boxes">
+                  <label for="confThreshInput">CONF:</label>
+                  <input type="range" id="confThreshInput" min="15" max="85" value="35" class="tuning-range">
+                  <span id="confThreshVal" class="tuning-val">0.35</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Annotated Image Viewport -->
+        <div class="camera-rig-grid" style="margin-bottom: 16px;">
           <div class="camera-feed-card main-front">
             <div class="feed-header">
-              <span class="feed-source-tag live">UPLOADED ROAD VIDEO — REAL-TIME OBJECT DETECTION</span>
-              <span class="feed-badge live" id="frontCamSourceBadge">SOURCE: UPLOADED ROAD VIDEO</span>
+              <span class="feed-source-tag live" id="imageSourceLabel">ACTIVE SCENE: CASE 1 — UNMARKED VILLAGE ROAD</span>
+              <span class="feed-badge live" id="frontCamSourceBadge">YOLOv8 DEEP LEARNING INFERENCE</span>
             </div>
-            <div class="feed-viewport">
-              <canvas id="frontCamLiveCanvas" width="640" height="360" class="feed-stream-canvas"></canvas>
-              
-              <!-- Real HTML5 Video Player with Dynamic AI Obstacle Detection Overlay -->
-              <div id="uploadedVideoContainer" class="feed-video-wrapper" hidden>
-                <video id="uploadedVideoPlayer" class="feed-stream-video" playsinline muted controls loop></video>
-                <canvas id="uploadedVideoOverlayCanvas" class="feed-stream-overlay-canvas" width="640" height="360"></canvas>
-              </div>
-
-              <img id="frontCamImage" class="feed-stream-img" alt="Front Camera Feed" hidden>
-              <div id="frontCamPlaceholder" class="feed-placeholder" hidden>
-                <div class="placeholder-icon">📷</div>
-                <div class="placeholder-text">Uploaded Road Video Standby</div>
-                <small>Select an uploaded road video or click "Upload On-Road Video" for real-time YOLO object detection.</small>
-              </div>
+            <div class="feed-viewport image-perception-viewport">
+              <img id="imagePerceptionImg" src="/static/images/scenarios/preset_pedestrian.jpg" class="image-perception-canvas" alt="Annotated Road Scene">
+              <canvas id="imagePerceptionCanvas" width="960" height="540" class="image-perception-canvas" style="display:none;"></canvas>
             </div>
             <div class="feed-footer">
               <span>FOV: 120° WIDE-ANGLE HD</span>
-              <span id="frontCamResolution">INPUT: 1280x720 (INFERENCE 640x640)</span>
-              <span id="videoSourceTypeLabel">MODEL: YOLOv8m KITTI AUTONOMOUS (mAP@0.5: 90.6%)</span>
+              <span id="frontCamResolution">INPUT: 960x540 (INFERENCE 640x640)</span>
+              <span id="videoSourceTypeLabel">MODEL: YOLOv8m KITTI AUTONOMOUS &amp; INDIAN TAXONOMY</span>
             </div>
           </div>
         </div>
 
-        <!-- Telemetry & Performance Row (Honest Measured Values) -->
-        <div class="metrics-grid four-col">
+        <!-- Telemetry & Performance Row -->
+        <div class="metrics-grid four-col" style="margin-bottom: 16px;">
           <div class="metric-card">
-            <span class="metric-label">PERCEPTION INFERENCE TIME</span>
+            <span class="metric-label">INFERENCE TIME</span>
             <span class="metric-val" id="infTimeMetric">-- ms</span>
-            <small class="metric-hint">Measured tensor forward pass latency (PyTorch)</small>
+            <small class="metric-hint">Tensor forward pass latency (PyTorch)</small>
           </div>
           <div class="metric-card">
-            <span class="metric-label">PROCESSING &amp; VIDEO FPS</span>
-            <span class="metric-val" id="procFpsMetric">-- FPS</span>
-            <small class="metric-hint"><span id="videoNativeFpsLabel">Video: 29.97 FPS</span> | Measured inference rate</small>
+            <span class="metric-label">ESTIMATED MIN DISTANCE</span>
+            <span class="metric-val" id="minDistMetric">-- m</span>
+            <small class="metric-hint">Monocular perspective distance</small>
           </div>
           <div class="metric-card">
-            <span class="metric-label">PROCESSED FRAMES</span>
-            <span class="metric-val" id="procFramesMetric">0 / 0</span>
-            <small class="metric-hint">Frame index across active road video</small>
+            <span class="metric-label">MOTION PREDICTION VECTOR</span>
+            <span class="metric-val" id="motionPredVectorMetric" style="font-size:15px;">--</span>
+            <small class="metric-hint">Irregular motion extrapolation</small>
           </div>
           <div class="metric-card">
-            <span class="metric-label">ACTIVE OBJECT TRACKER</span>
-            <span class="metric-val" id="activeTrackerMetric" style="font-size:16px;">ByteTrack (IoU + Centroid)</span>
-            <small class="metric-hint"><span id="activeTracksCountLabel">0 active tracked objects</span></small>
+            <span class="metric-label">DETECTED OBJECTS</span>
+            <span class="metric-val" id="activeTracksCountLabel">0 Objects</span>
+            <small class="metric-hint">Active bounding boxes in corridor</small>
           </div>
         </div>
 
-        <!-- Real-Time Collision Risk & Pedestrian Safety Banner -->
-        <div class="risk-status-banner normal" id="riskStatusBanner">
+        <!-- Real-Time Collision Risk & Decision Banner -->
+        <div class="risk-status-banner normal" id="riskStatusBanner" style="margin-bottom: 16px;">
           <div class="risk-banner-main">
             <div class="risk-banner-icon" id="riskBannerIcon">🛡️</div>
             <div>
               <h3 id="riskDecisionTitle">DECISION STATE: NORMAL CRUISE</h3>
-              <p id="riskDecisionSubtitle">Forward travel envelope clear. Autonomous cruise tracking nominal corridor.</p>
-              <div id="riskPedestrianAlert" class="risk-pedestrian-tag" style="display:none;"></div>
+              <p id="riskDecisionSubtitle">Corridor clear ahead. Cruise speed tracking nominal corridor trajectory.</p>
             </div>
           </div>
           <div class="risk-banner-metrics">
             <div class="risk-chip">
               <span class="risk-chip-label">TARGET SPEED</span>
-              <span class="risk-chip-val" id="riskTargetSpeed">42.0 km/h</span>
+              <span class="risk-chip-val" id="riskTargetSpeed">35.0 km/h</span>
             </div>
             <div class="risk-chip">
               <span class="risk-chip-label">MIN TTC</span>
               <span class="risk-chip-val" id="riskMinTTC">> 6.0s (SAFE)</span>
             </div>
             <div class="risk-chip">
-              <span class="risk-chip-label">MIN DISTANCE</span>
-              <span class="risk-chip-val" id="riskMinDist">CLEAR [Est. Monocular]</span>
-            </div>
-            <div class="risk-chip">
-              <span class="risk-chip-label">CROSSING ZONE</span>
-              <span class="risk-chip-val" id="riskCrossingZoneStatus" style="color:#00e59b;">UNOCCUPIED</span>
+              <span class="risk-chip-label">EST. DISTANCE</span>
+              <span class="risk-chip-val" id="riskMinDist">CLEAR</span>
             </div>
           </div>
         </div>
 
         <!-- Detection Summary Chips Bar -->
-        <div class="detection-summary-bar">
+        <div class="detection-summary-bar" style="margin-bottom: 16px;">
           <div class="summary-chip-label">DETECTED IN SCENE:</div>
           <div class="summary-chips-wrap" id="detectionSummaryChips">
             <span class="summary-chip" id="chipPedestrians"><span class="chip-dot" style="background:#00e59b;"></span> Pedestrians: <b>0</b></span>
             <span class="summary-chip" id="chipVehicles"><span class="chip-dot" style="background:#00a5ff;"></span> Vehicles: <b>0</b></span>
             <span class="summary-chip" id="chipTwoWheelers"><span class="chip-dot" style="background:#ffbf00;"></span> Two-Wheelers: <b>0</b></span>
-            <span class="summary-chip" id="chipAnimals"><span class="chip-dot" style="background:#ff69b4;"></span> Animals: <b>0</b></span>
-            <span class="summary-chip" id="chipTrafficLights"><span class="chip-dot" style="background:#00ffff;"></span> Traffic Lights: <b>0</b></span>
+            <span class="summary-chip" id="chipAnimals"><span class="chip-dot" style="background:#ff69b4;"></span> Animals / Cattle: <b>0</b></span>
+            <span class="summary-chip" id="chipHazards"><span class="chip-dot" style="background:#ff9100;"></span> Potholes / Defects: <b>0</b></span>
+            <span class="summary-chip" id="chipTrafficLights"><span class="chip-dot" style="background:#00ffff;"></span> Signals: <b>0</b></span>
             <span class="summary-chip" id="chipTrafficSigns"><span class="chip-dot" style="background:#ffd700;"></span> Signs: <b>0</b></span>
-            <span class="summary-chip" id="chipAmbulance"><span class="chip-dot" style="background:#ff3b30;"></span> Emergency / Priority: <b>0</b></span>
-            <span class="summary-chip" id="chipHazards"><span class="chip-dot" style="background:#ff9100;"></span> Road Hazards: <b>0</b></span>
+            <span class="summary-chip" id="chipAmbulance"><span class="chip-dot" style="background:#ff3b30;"></span> Priority: <b>0</b></span>
           </div>
         </div>
 
         <!-- Tracked Objects Table -->
-        <div class="research-card">
+        <div class="research-card" style="margin-bottom: 16px;">
           <div class="card-header">
             <div>
-              <span class="eyebrow">TEMPORAL SCENE ANALYSIS</span>
-              <h3>Active Tracked Obstacles &amp; Motion Trajectories</h3>
+              <span class="eyebrow">DEEP LEARNING DETECTIONS &amp; MOTION TELEMETRY</span>
+              <h3>Active Detected Road Users, Obstacles &amp; Safety Decisions</h3>
             </div>
-            <span class="badge-pill badge-live" id="trackingStatusBadge">REAL-TIME MULTI-OBJECT TRACKING</span>
+            <span class="badge-pill badge-live" id="trackingStatusBadge">YOLOv8 MONOCULAR REASONING</span>
           </div>
           <div class="table-container">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Track ID</th>
+                  <th>Detection ID</th>
                   <th>Class Label</th>
                   <th>Confidence</th>
-                  <th>Corridor Centroid</th>
-                  <th>Est. Distance (Monocular)</th>
-                  <th>Observed Velocity</th>
-                  <th>Safety Decision &amp; Action</th>
+                  <th>Corridor Bounding Box</th>
+                  <th>Est. Distance</th>
+                  <th>Predicted Vector</th>
+                  <th>Safety Decision</th>
                 </tr>
               </thead>
               <tbody id="detectedObjectsTbody">
                 <tr>
                   <td colspan="7" style="text-align:center;color:#6b8274;">
-                    Initializing perception model and tracking engine... Select or play a video.
+                    Click a preset scenario above or click 'Run Deep Learning Inference' to execute evaluation.
                   </td>
                 </tr>
               </tbody>
@@ -901,101 +883,6 @@
                 <small>Orange box | Surface crater or construction obstruction | Lateral evasion</small>
               </div>
             </div>
-            <div class="taxonomy-chip">
-              <span class="legend-color-box" style="background:#00ffff;border:1px solid #00ffff;"></span>
-              <div>
-                <b>Traffic Light (Signal State)</b>
-                <small>Cyan box | Intersection signal monitoring | Red: Stop | Green: Proceed</small>
-              </div>
-            </div>
-            <div class="taxonomy-chip">
-              <span class="legend-color-box" style="background:#ffd700;border:1px solid #ffd700;"></span>
-              <div>
-                <b>Traffic Sign (Regulatory / Warning)</b>
-                <small>Gold box | Stop / speed limit / pedestrian crossing sign recognition</small>
-              </div>
-            </div>
-        <!-- Faris Agour YOLOv8 Autonomous Model Training Modal -->
-        <div id="trainModelModal" class="train-modal-backdrop" style="display:none;">
-          <div class="train-modal-card">
-            <div class="train-modal-header">
-              <h3><span>🚀</span> Train &amp; Fine-Tune Autonomous Perception Model</h3>
-              <button type="button" class="train-modal-close" id="closeTrainModalBtn" title="Close modal">✕</button>
-            </div>
-            <div class="train-modal-body">
-              <div class="train-pipeline-badge">
-                <b>PIPELINE SPECIFICATION (Faris Agour Repository)</b><br>
-                <span>YOLOv8 Autonomous Driving Architecture with AdamW optimizer, Cosine LR scheduler, enhanced augmentations (Mosaic, MixUp, Perspective), and TensorRT/ONNX export acceleration.</span>
-              </div>
-
-              <div class="train-config-grid">
-                <div class="train-field-group">
-                  <label for="trainModelArchSelect">Model Architecture:</label>
-                  <select id="trainModelArchSelect">
-                    <option value="yolov8m_kitti_enhanced.pt" selected>YOLOv8m - Faris Agour Enhanced (KITTI Benchmark)</option>
-                    <option value="yolov8n.pt">YOLOv8n - Fast Nano (Edge / Mobile)</option>
-                    <option value="yolov8s.pt">YOLOv8s - Small Balanced</option>
-                  </select>
-                </div>
-                <div class="train-field-group">
-                  <label for="trainDatasetSelect">Dataset Target:</label>
-                  <select id="trainDatasetSelect">
-                    <option value="indian_road_benchmark" selected>Indian Road Benchmark (Vehicles, Pedestrians, Potholes, Hazards)</option>
-                    <option value="kitti_autonomous">KITTI Autonomous Driving Dataset (Cars, Vans, Trucks, Pedestrians)</option>
-                  </select>
-                </div>
-                <div class="train-field-group">
-                  <label for="trainEpochsInput">Training Epochs:</label>
-                  <select id="trainEpochsInput">
-                    <option value="5" selected>5 Epochs (Fast Validation Fine-Tune)</option>
-                    <option value="20">20 Epochs (Standard Fine-Tune)</option>
-                    <option value="50">50 Epochs (Deep Training)</option>
-                    <option value="131">131 Epochs (Best Checkpoint Convergence)</option>
-                  </select>
-                </div>
-                <div class="train-field-group">
-                  <label for="trainBatchSelect">Batch Size &amp; Resolution:</label>
-                  <select id="trainBatchSelect">
-                    <option value="8" selected>Batch: 8 | Resolution: 640x640</option>
-                    <option value="16">Batch: 16 | Resolution: 640x640</option>
-                  </select>
-                </div>
-              </div>
-
-              <div id="trainProgressContainer" style="display:none; flex-direction:column; gap:12px;">
-                <div class="train-progress-bar-container">
-                  <div class="train-progress-bar-fill" id="trainProgressBarFill"></div>
-                  <span class="train-progress-label" id="trainProgressText">0% Completed</span>
-                </div>
-                <table class="train-metrics-table">
-                  <thead>
-                    <tr>
-                      <th>Status</th>
-                      <th>Precision</th>
-                      <th>Recall</th>
-                      <th>mAP@0.5</th>
-                      <th>mAP@0.5:0.95</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td id="trainStatusVal">TRAINING</td>
-                      <td id="trainPrecisionVal">0.899 (90%)</td>
-                      <td id="trainRecallVal">0.853 (85%)</td>
-                      <td id="trainMap50Val">0.906 (91%)</td>
-                      <td id="trainMap95Val">0.673 (67%)</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div class="train-logs-box" id="trainLogsBox">Initializing training thread...</div>
-              </div>
-            </div>
-            <div class="train-modal-footer">
-              <button type="button" class="deck-btn clear-btn" id="cancelTrainBtn">Cancel</button>
-              <button type="button" class="deck-btn train-btn" id="startTrainJobBtn">
-                <span class="btn-icon">⚡</span> Start Training / Fine-Tuning
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -1013,6 +900,146 @@
           <div class="header-action-group">
             <span class="badge-pill badge-live">MATLAB/SIMULINK BRIDGE: READY</span>
             <a href="/api/autonomous/simulink/export-matlab" download="simulink_bridge.m" class="action-btn-pill">📥 Export .M Bridge Script</a>
+          </div>
+        </div>
+
+        <!-- 7 Core MathWorks Tools Ecosystem Cards (PS 06 Specification) -->
+        <div class="research-card" style="margin-bottom: 20px; border-left: 4px solid #00e59b;">
+          <div class="card-header" style="padding-bottom: 8px;">
+            <div>
+              <span class="eyebrow" style="color:#00e59b;">SUGGESTED MATHWORKS TOOLS ECOSYSTEM</span>
+              <h3>7 Core MathWorks Tools for Adaptive Navigation &amp; Path Planning</h3>
+              <p style="color:#8fa598;font-size:12px;margin-top:3px;">Interactive demonstrators for RoadRunner, Automated Driving Toolbox, Navigation Toolbox, Stateflow, Vehicle Dynamics Blockset, Simulink Bicycle Model, and Deep Learning Toolbox.</p>
+            </div>
+            <span class="badge-pill badge-live">7 TOOLS READY</span>
+          </div>
+
+          <div class="mathworks-showcase-grid">
+            <!-- 1. RoadRunner -->
+            <div class="mathworks-tool-card" id="toolCardRoadRunner">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>1. RoadRunner</h4>
+                  <small>Road environment creation</small>
+                </div>
+                <span class="badge-pill badge-live" style="font-size:10px;">ENVIRONMENT</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: Road environment creation</b><br>
+                Indian roads maari narrow roads, junctions, obstacles irukkura road scenes create panna use pannuvom.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoRoadRunner">
+                <span>🛣️</span> Generate RoadRunner Corridor
+              </button>
+            </div>
+
+            <!-- 2. Automated Driving Toolbox -->
+            <div class="mathworks-tool-card" id="toolCardAutomatedDriving">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>2. Automated Driving Toolbox</h4>
+                  <small>Vehicle and traffic perception</small>
+                </div>
+                <span class="badge-pill badge-live" style="font-size:10px;">PERCEPTION</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: Vehicle and traffic perception</b><br>
+                Vehicles, pedestrians, sensors, object tracking, driving scenarios simulate and test panna help pannum.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoAutomatedDriving">
+                <span>📡</span> Toggle Sensor Perception Stack
+              </button>
+            </div>
+
+            <!-- 3. Navigation Toolbox -->
+            <div class="mathworks-tool-card" id="toolCardNavigation">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>3. Navigation Toolbox</h4>
+                  <small>Path planning</small>
+                </div>
+                <span class="badge-pill badge-live" style="font-size:10px;">PLANNING</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: Path planning</b><br>
+                Obstacles avoid panni, destination reach aagura safe path calculate panna use pannuvom.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoNavigation">
+                <span>🧭</span> Compute Frenet Lattice Fan
+              </button>
+            </div>
+
+            <!-- 4. Stateflow -->
+            <div class="mathworks-tool-card" id="toolCardStateflow">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>4. Stateflow</h4>
+                  <small>Driving decisions</small>
+                </div>
+                <span class="badge-pill badge-simulated" style="font-size:10px;">DECISION FSM</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: Driving decisions</b><br>
+                Vehicle NORMAL ➔ CAUTION ➔ SLOW DOWN ➔ STOP / REPLAN nu situation-ku etha decision edukka logic build pannuvom.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoStateflow">
+                <span>⚙️</span> Step Decision FSM Transitions
+              </button>
+            </div>
+
+            <!-- 5. Vehicle Dynamics Blockset -->
+            <div class="mathworks-tool-card" id="toolCardVehicleDynamics">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>5. Vehicle Dynamics Blockset</h4>
+                  <small>Vehicle movement simulation</small>
+                </div>
+                <span class="badge-pill badge-live" style="font-size:10px;">DYNAMICS</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: Vehicle movement simulation</b><br>
+                Steering, acceleration, braking, vehicle motion maari dynamics-ai model panni test pannuvom.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoVehicleDynamics">
+                <span>🏎️</span> Test Dynamic Braking &amp; Slip
+              </button>
+            </div>
+
+            <!-- 6. Simulink Bicycle Model -->
+            <div class="mathworks-tool-card" id="toolCardBicycleModel">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>6. Simulink Bicycle Model</h4>
+                  <small>Simplified vehicle model</small>
+                </div>
+                <span class="badge-pill badge-live" style="font-size:10px;">MATHEMATICAL</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: Simplified vehicle model</b><br>
+                Vehicle steering and turning eppadi affect aagudhu nu simplified mathematical model-la simulate pannuvom. Idhu oru model; separate toolbox-nu avasiyam illa.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoBicycleModel">
+                <span>📐</span> Run RK4 Bicycle Solver
+              </button>
+            </div>
+
+            <!-- 7. Deep Learning Toolbox -->
+            <div class="mathworks-tool-card" id="toolCardDeepLearning">
+              <div class="mathworks-tool-header">
+                <div>
+                  <h4>7. Deep Learning Toolbox</h4>
+                  <small>AI model training</small>
+                </div>
+                <span class="badge-pill badge-live" style="font-size:10px;">NEURAL AI</span>
+              </div>
+              <div class="mathworks-tool-tamil">
+                <b>Where: AI model training</b><br>
+                Road video/images-la irundhu vehicles, pedestrians maari objects detect panna deep-learning model train or run panna use pannuvom.
+              </div>
+              <button type="button" class="mathworks-tool-action-btn" id="btnDemoDeepLearning">
+                <span>🧠</span> Run Deep Learning Inference
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1409,231 +1436,6 @@
       </div>
     </div>
 
-    <!-- 5. CARLA SIMULATION BRIDGE VIEW -->
-    <div class="tab-view" id="view-carla" hidden>
-      <div class="research-container">
-        <div class="research-header-row">
-          <div>
-            <span class="eyebrow">CARLA SIMULATOR CO-SIMULATION</span>
-            <h2>CARLA 0.9.x Integration Bridge</h2>
-            <p class="research-subtitle">Socket probe status, actor blueprints, asset requirements, and offline benchmark decoupling.</p>
-          </div>
-          <div class="header-action-group">
-            <span class="badge-pill badge-offline" id="carlaServerBadge">CARLA SERVER: OFFLINE / STANDBY</span>
-          </div>
-        </div>
-
-        <div class="grid-two-column">
-          <div class="research-card">
-            <div class="card-header">
-              <div>
-                <span class="eyebrow">ARCHITECTURE & ISOLATION</span>
-                <h3>Decoupled Co-Simulation Design</h3>
-              </div>
-            </div>
-            <p style="color:#8fa598;line-height:1.6;font-size:13px;">
-              Per research guidelines, the web dashboard operates seamlessly regardless of whether CARLA is running. If CARLA is unavailable, the application operates in <b>Kinematic Benchmark Mode</b> without crashing or blocking.
-            </p>
-            <div class="info-list" style="margin-top:14px;">
-              <div class="info-item">
-                <b>Heartbeat Target:</b> <code>127.0.0.1:2000 (RPC) / 2001 (Streaming)</code>
-              </div>
-              <div class="info-item">
-                <b>Client API:</b> <code>carla.Client</code> Python Wheel
-              </div>
-              <div class="info-item">
-                <b>Ego Vehicle Blueprint:</b> <code>vehicle.tesla.model3</code> with RGB Front Camera
-              </div>
-            </div>
-          </div>
-
-          <div class="research-card">
-            <div class="card-header">
-              <div>
-                <span class="eyebrow">INDIAN ROAD ASSET DOCUMENTATION</span>
-                <h3>Custom Asset Requirements</h3>
-              </div>
-            </div>
-            <p style="color:#8fa598;line-height:1.6;font-size:13px;">
-              Standard CARLA releases do <b>not</b> ship with Indian cattle meshes or procedural pothole geometries. For high-fidelity visual simulation:
-            </p>
-            <ul style="color:#8fa598;margin-left:18px;margin-top:8px;line-height:1.6;font-size:13px;">
-              <li><b>Cattle/Dogs:</b> Requires importing custom rigged FBX skeletal meshes into Unreal Engine / CARLA content library.</li>
-              <li><b>Potholes:</b> Requires decal projection or road mesh displacement mapping.</li>
-              <li><b>Current Prototype Behavior:</b> Benchmark scenarios proxy animal and pothole obstacle coordinates and bounding boxes realistically to test perception and planner response.</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="research-card" style="margin-top:20px;">
-          <div class="card-header">
-            <div>
-              <span class="eyebrow">SETUP MANUAL</span>
-              <h3>CARLA Execution Instructions</h3>
-            </div>
-          </div>
-          <pre id="carlaInstructionsText" style="background:#09120e;padding:16px;border-radius:8px;color:#a3c2b0;font-family:monospace;font-size:12px;line-height:1.5;overflow-x:auto;">Checking CARLA server status...</pre>
-        </div>
-      </div>
-    </div>
-
-    <!-- 6. DATASET & TRAINING STUDIO VIEW -->
-    <div class="tab-view" id="view-dataset" hidden>
-      <div class="research-container">
-        <div class="research-header-row">
-          <div>
-            <span class="eyebrow">CUSTOM MODEL TRAINING PIPELINE</span>
-            <h2>Indian Road Dataset & YOLO Training Studio</h2>
-            <p class="research-subtitle">Hardware acceleration telemetry, dataset annotation validator, and background model training.</p>
-          </div>
-          <div class="header-action-group">
-            <span class="badge-pill badge-live" id="dsCudaBadge">HARDWARE: CHECKING...</span>
-          </div>
-        </div>
-
-        <div class="metrics-grid four-col">
-          <div class="metric-card">
-            <span class="metric-label">DETECTED COMPUTE DEVICE</span>
-            <span class="metric-val" id="dsHardwareDevice" style="font-size:16px;">--</span>
-            <small class="metric-hint">PyTorch acceleration engine</small>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">TRAINING IMAGES</span>
-            <span class="metric-val" id="dsTrainImagesCount">--</span>
-            <small class="metric-hint">In dataset/images/train</small>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">VALIDATION IMAGES</span>
-            <span class="metric-val" id="dsValImagesCount">--</span>
-            <small class="metric-hint">In dataset/images/val</small>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">ANNOTATION INTEGRITY</span>
-            <span class="badge-pill badge-live" id="dsValidationStatusBadge" style="margin-top:6px;">VALIDATING</span>
-            <small class="metric-hint"><span id="dsAnnotationsCount">0</span> total bounding boxes</small>
-          </div>
-        </div>
-
-        <div class="grid-two-column" style="margin-top:20px;">
-          <div class="research-card">
-            <div class="card-header">
-              <div>
-                <span class="eyebrow">TRAINING HYPERPARAMETERS</span>
-                <h3>Trigger Background Training Job</h3>
-              </div>
-            </div>
-            <div class="slider-control-group">
-              <div class="input-inline-grid">
-                <label>
-                  <span>Epochs</span>
-                  <input type="number" id="trainEpochsInput" min="1" max="100" value="5">
-                </label>
-                <label>
-                  <span>Batch Size</span>
-                  <input type="number" id="trainBatchInput" min="1" max="64" value="8">
-                </label>
-              </div>
-              <button type="button" class="action-btn-pill" id="startTrainingBtn" style="width:100%;margin-top:14px;">
-                🚀 Start Model Training Job
-              </button>
-            </div>
-          </div>
-
-          <div class="research-card">
-            <div class="card-header">
-              <div>
-                <span class="eyebrow">JOB LOG OUTPUT</span>
-                <h3>Live Training Terminal</h3>
-              </div>
-            </div>
-            <pre id="trainingLogsTerminal" style="background:#09120e;padding:14px;border-radius:8px;color:#00e59b;font-family:monospace;font-size:11px;height:140px;overflow-y:auto;">System ready. Set epochs and click 'Start Model Training Job'.</pre>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 7. SYSTEM VERIFICATION MATRIX VIEW -->
-    <div class="tab-view" id="view-verification" hidden>
-      <div class="research-container">
-        <div class="research-header-row">
-          <div>
-            <span class="eyebrow">RESEARCH INTEGRITY & AUDIT</span>
-            <h2>Prototype Verification Matrix</h2>
-            <p class="research-subtitle">Transparent feature audit distinguishing WORKING, SIMULATED, and NOT CONFIGURED modules.</p>
-          </div>
-        </div>
-
-        <div class="research-card">
-          <div class="card-header">
-            <div>
-              <span class="eyebrow">ACTIVE SUBSYSTEMS</span>
-              <h3 style="color:#00e59b;">1. Working Features (Genuinely Implemented & Tested)</h3>
-            </div>
-          </div>
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Subsystem / Feature</th>
-                  <th>Implementation Details</th>
-                  <th>Audit Status</th>
-                </tr>
-              </thead>
-              <tbody id="matrixWorkingTbody">
-                <tr><td colspan="3">Loading verification matrix...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="research-card" style="margin-top:20px;">
-          <div class="card-header">
-            <div>
-              <span class="eyebrow">SIMULATION CO-PROCESSORS</span>
-              <h3 style="color:#ffb84d;">2. Simulated Features (Modelled Co-Processors & Envelopes)</h3>
-            </div>
-          </div>
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Subsystem / Feature</th>
-                  <th>Implementation Details</th>
-                  <th>Audit Status</th>
-                </tr>
-              </thead>
-              <tbody id="matrixSimulatedTbody">
-                <tr><td colspan="3">Loading verification matrix...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="research-card" style="margin-top:20px;">
-          <div class="card-header">
-            <div>
-              <span class="eyebrow">EXTERNAL DEPENDENCIES</span>
-              <h3 style="color:#8fa598;">3. Not Configured (External Hardware / Cloud Service Dependent)</h3>
-            </div>
-          </div>
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Subsystem / Feature</th>
-                  <th>Implementation Details</th>
-                  <th>Audit Status</th>
-                </tr>
-              </thead>
-              <tbody id="matrixNotConfiguredTbody">
-                <tr><td colspan="3">Loading verification matrix...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="toast" id="toast" role="status"></div>
     <div class="modal-backdrop" id="rerouteModal" hidden>
       <div class="modal">
@@ -1647,9 +1449,9 @@
   </div>
   <script>window.ROADGUARD_CONFIG = { browserKey: {{ (config.get('GOOGLE_MAPS_BROWSER_KEY', '') or '')| tojson }}};</script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="{{ url_for('static', filename='driving_simulation.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script src="{{ url_for('static', filename='autonomous_dashboard.js') }}"></script>
-  <script src="{{ url_for('static', filename='driving_simulation.js') }}"></script>
-</body>
+  </body>
 
 </html>

@@ -361,3 +361,200 @@
   color: #64748b;
   padding: 1rem 0 !important;
 }
+
+/* Quick Scenarios Bar */
+.sim-quick-scenarios-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 8px;
+}
+
+.sim-quick-scen-btn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.sim-quick-scen-btn:hover {
+  background: #334155;
+  border-color: #38bdf8;
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.sim-quick-scen-btn.active {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: #06b6d4;
+  color: #38bdf8;
+}
+
+/* Deep Learning Image Perception Suite */
+.image-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.image-preset-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.image-preset-card:hover {
+  border-color: #00e59b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 229, 155, 0.2);
+}
+
+.image-preset-card.active {
+  border-color: #00e59b;
+  background: rgba(0, 229, 155, 0.08);
+  box-shadow: 0 0 12px rgba(0, 229, 155, 0.3);
+}
+
+.image-preset-thumb {
+  width: 100%;
+  height: 95px;
+  object-fit: cover;
+  background: #09120e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.image-preset-info {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.image-preset-info b {
+  font-size: 11.5px;
+  color: #f1f5f9;
+}
+
+.image-preset-info small {
+  font-size: 10px;
+  color: #8fa598;
+}
+
+.image-perception-viewport {
+  position: relative;
+  background: #060e0a;
+  border: 1px solid #1a3324;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-perception-canvas {
+  width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+  display: block;
+}
+
+/* MathWorks 7 Tools Showcase */
+.mathworks-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.mathworks-tool-card {
+  background: rgba(10, 24, 18, 0.7);
+  border: 1px solid #1e4230;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.mathworks-tool-card:hover {
+  border-color: #00e59b;
+  background: rgba(13, 34, 25, 0.85);
+  box-shadow: 0 4px 18px rgba(0, 229, 155, 0.15);
+}
+
+.mathworks-tool-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.mathworks-tool-header h4 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.mathworks-tool-header small {
+  color: #00e59b;
+  font-weight: 600;
+  font-size: 10.5px;
+}
+
+.mathworks-tool-tamil {
+  font-size: 11.5px;
+  color: #a4c4b2;
+  line-height: 1.45;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-left: 3px solid #00e59b;
+}
+
+.mathworks-tool-action-btn {
+  background: #143022;
+  border: 1px solid #28543d;
+  color: #00e59b;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.mathworks-tool-action-btn:hover {
+  background: #00e59b;
+  color: #04120a;
+  border-color: #00e59b;
+  box-shadow: 0 2px 10px rgba(0, 229, 155, 0.4);
+}
+

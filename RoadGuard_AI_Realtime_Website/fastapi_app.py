@@ -655,6 +655,28 @@ def video_stream(job_id: str):
     return FileResponse(job["video_path"], media_type="video/mp4")
 
 
+@app.get("/api/autonomous/video/download-detected/{job_id}", summary="Download Detected Annotated Video")
+def api_download_detected_video(job_id: str):
+    job = video_analysis_service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    video_path = job.get("annotated_video_path")
+    if not video_path or not os.path.exists(video_path):
+        res = job.get("result") or {}
+        video_path = res.get("annotated_video_path")
+
+    if not video_path or not os.path.exists(video_path):
+        cand_name = f"{os.path.splitext(job['filename'])[0]}_detected.mp4"
+        cand_path = os.path.join(UPLOAD_VIDEOS_DIR, cand_name)
+        if os.path.exists(cand_path):
+            video_path = cand_path
+        else:
+            raise HTTPException(status_code=404, detail="Annotated video not found or analysis still processing.")
+
+    return FileResponse(video_path, media_type="video/mp4", filename=os.path.basename(video_path))
+
+
 @app.get("/api/autonomous/cameras", summary="Get Camera Rig Configuration")
 def api_get_cameras():
     return video_analysis_service.get_camera_sources()

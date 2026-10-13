@@ -52,6 +52,23 @@
   display: none !important;
 }
 
+/* AV Planner Sim & City Command Embedded Containers */
+.sim-embed-container {
+  width: 100%;
+  height: calc(100vh - 105px);
+  min-height: 720px;
+  background: #060908;
+  position: relative;
+  overflow: hidden;
+}
+
+.sim-embed-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
 /* Single View Full Width Container */
 .research-container {
   padding: 22px 26px;
@@ -897,6 +914,39 @@
   background: #00e59b;
   color: #031a10;
   border-color: #00e59b;
+}
+
+.deck-btn.streamlit-btn {
+  background: linear-gradient(135deg, #1565c0, #1976d2);
+  color: #ffffff !important;
+  border-color: #2196f3;
+  text-decoration: none;
+  box-shadow: 0 0 10px rgba(33, 150, 243, 0.35);
+}
+
+.deck-btn.streamlit-btn:hover {
+  background: linear-gradient(135deg, #1976d2, #2196f3);
+  color: #ffffff !important;
+  box-shadow: 0 0 14px rgba(33, 150, 243, 0.6);
+}
+
+.deck-btn.download-detected-btn {
+  background: #11281e;
+  color: #00e59b;
+  border-color: #1a4d33;
+}
+
+.deck-btn.download-detected-btn:hover:not(:disabled) {
+  background: #00e59b;
+  color: #031a10;
+  border-color: #00e59b;
+  box-shadow: 0 0 12px rgba(0, 229, 155, 0.35);
+}
+
+.deck-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .scrubber-track-group {

@@ -90,28 +90,29 @@ class VideoAnalysisService:
                     mtime = os.path.getmtime(fpath)
                     if fsize > 1000:
                         cap = cv2.VideoCapture(fpath)
-                        total_f = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if cap.isOpened() else 0
-                        fps_val = float(cap.get(cv2.CAP_PROP_FPS) or 25.0) if cap.isOpened() else 25.0
-                        w_val = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if cap.isOpened() else 0
-                        h_val = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if cap.isOpened() else 0
+                        is_open = cap.isOpened()
+                        total_f = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if is_open else 0
+                        fps_val = float(cap.get(cv2.CAP_PROP_FPS) or 25.0) if is_open else 25.0
+                        w_val = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if is_open else 0
+                        h_val = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if is_open else 0
                         cap.release()
-                        dur_sec = round(total_f / max(1.0, fps_val), 1)
+                        if is_open and total_f > 0 and w_val > 0 and h_val > 0:
+                            dur_sec = round(total_f / max(1.0, fps_val), 1)
+                            is_sample_urban = (fsize > 10 * 1024 * 1024)
+                            label = f"Urban Road & Pedestrian Crossing ({round(fsize / (1024 * 1024), 1)} MB)" if is_sample_urban else f"Road Video '{fname}' ({round(fsize / (1024 * 1024), 1)} MB)"
 
-                        is_sample_urban = (fsize > 10 * 1024 * 1024)
-                        label = f"Urban Road & Pedestrian Crossing ({round(fsize / (1024 * 1024), 1)} MB)" if is_sample_urban else f"Road Video '{fname}' ({round(fsize / (1024 * 1024), 1)} MB)"
-
-                        videos.append({
-                            "filename": fname,
-                            "display_name": label,
-                            "size_bytes": fsize,
-                            "size_mb": round(fsize / (1024 * 1024), 2),
-                            "duration_seconds": dur_sec,
-                            "total_frames": total_f,
-                            "fps": round(fps_val, 1),
-                            "resolution": f"{w_val}x{h_val}",
-                            "modified_timestamp": mtime,
-                            "url": f"/api/autonomous/video-file/{fname}"
-                        })
+                            videos.append({
+                                "filename": fname,
+                                "display_name": label,
+                                "size_bytes": fsize,
+                                "size_mb": round(fsize / (1024 * 1024), 2),
+                                "duration_seconds": dur_sec,
+                                "total_frames": total_f,
+                                "fps": round(fps_val, 1),
+                                "resolution": f"{w_val}x{h_val}",
+                                "modified_timestamp": mtime,
+                                "url": f"/api/autonomous/video-file/{fname}"
+                            })
                 except Exception:
                     continue
 
@@ -385,10 +386,25 @@ class VideoAnalysisService:
             job_tracker = ObjectTracker(iou_threshold=iou_thresh)
             t_work_start = time.perf_counter()
 
+            # Initialize annotated output video writer (matching pun33th45/detect_video pipeline)
+            out_detected_filename = f"{os.path.splitext(job['filename'])[0]}_detected.mp4"
+            out_detected_path = os.path.join(UPLOAD_VIDEOS_DIR, out_detected_filename)
+            video_writer = None
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                video_writer = cv2.VideoWriter(out_detected_path, fourcc, fps, (width, height))
+            except Exception:
+                video_writer = None
+
+            last_annotated_frame = None
+
             # Check model availability and set confidence
             perception_service.set_confidence_threshold(conf_thresh)
             model_status = perception_service.get_status()
             with self._lock:
+                job["annotated_video_filename"] = out_detected_filename
+                job["annotated_video_path"] = out_detected_path
+                job["annotated_video_url"] = f"/api/autonomous/video/download-detected/{job_id}"
                 job["events"].append({
                     "timestamp": time.strftime("%H:%M:%S"),
                     "type": "INFERENCE_START",
@@ -443,22 +459,43 @@ class VideoAnalysisService:
                         class_summary[cname] = class_summary.get(cname, 0) + 1
                         frame_classes[cname] = frame_classes.get(cname, 0) + 1
 
+                    # Render annotated frame with real bounding boxes, track labels, and FPS counter
+                    annotated_frame = frame.copy()
+                    for t in tracks:
+                        box = [int(v) for v in t["bbox"]]
+                        c_info = perception_service.TAXONOMY_INFO.get(t["class_name"], {})
+                        color = c_info.get("color", (0, 255, 0))
+                        cv2.rectangle(annotated_frame, (box[0], box[1]), (box[2], box[3]), color, 2)
+                        lbl = f"#{t['track_id']} {t['class_name']} {int(t['confidence'] * 100)}%"
+                        (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+                        cv2.rectangle(annotated_frame, (box[0], max(0, box[1] - th - 6)), (box[0] + tw + 4, box[1]), color, -1)
+                        cv2.putText(annotated_frame, lbl, (box[0] + 2, max(12, box[1] - 4)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+                    # Real FPS counter overlay (top-left)
+                    cur_fps = round(1000.0 / max(1.0, inf_ms), 1)
+                    cv2.putText(annotated_frame, f"FPS: {cur_fps}", (12, 32),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 255, 0), 2, cv2.LINE_AA)
+
+                    # Frame info readout
+                    cv2.putText(annotated_frame, f"Frame {frame_idx}/{total_frames}  Dets: {len(dets)}",
+                                (12, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1, cv2.LINE_AA)
+
+                    # Hazard indicator banner if pedestrian in crossing envelope
+                    if is_ped_crossing:
+                        cv2.rectangle(annotated_frame, (0, 0), (width, 36), (0, 0, 220), -1)
+                        cv2.putText(annotated_frame, "[CRITICAL HAZARD] PEDESTRIAN IN EGO TRAVEL PATH - STOP",
+                                    (14, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+
+                    last_annotated_frame = annotated_frame
+                    if video_writer is not None:
+                        video_writer.write(annotated_frame)
+
                     # Save snapshots periodically (every 20 sampled frames or on critical hazard)
                     snapshot_filename = None
                     if (analyzed_count % 20 == 0 or is_ped_crossing) and len(snapshots) < 80:
                         snapshot_filename = f"frame_{frame_idx:05d}.jpg"
                         snap_path = os.path.join(snapshot_dir, snapshot_filename)
-                        
-                        annotated_frame = frame.copy()
-                        for t in tracks:
-                            box = [int(v) for v in t["bbox"]]
-                            c_info = perception_service.TAXONOMY_INFO.get(t["class_name"], {})
-                            color = c_info.get("color", (0, 255, 0))
-                            cv2.rectangle(annotated_frame, (box[0], box[1]), (box[2], box[3]), color, 2)
-                            lbl = f"#{t['track_id']} {t['class_name']} {int(t['confidence'] * 100)}%"
-                            cv2.putText(annotated_frame, lbl, (box[0], max(16, box[1] - 6)),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 2, cv2.LINE_AA)
-                        
                         cv2.imwrite(snap_path, annotated_frame)
                         snapshots.append(snapshot_filename)
 
@@ -518,9 +555,16 @@ class VideoAnalysisService:
                         job["detected_classes_summary"] = dict(class_summary)
                         job["snapshots"] = list(snapshots)
 
+                else:
+                    # Write last annotated frame or original frame for skipped intervals to maintain video playback timing
+                    if video_writer is not None:
+                        video_writer.write(last_annotated_frame if last_annotated_frame is not None else frame)
+
                 frame_idx += 1
 
             cap.release()
+            if video_writer is not None:
+                video_writer.release()
 
             if job.get("cancelled"):
                 with self._lock:
@@ -537,6 +581,8 @@ class VideoAnalysisService:
             processing_fps = round(analyzed_count / elapsed_total, 1)
             total_objs_found = sum(class_summary.values())
 
+            annotated_ready = os.path.exists(out_detected_path) and os.path.getsize(out_detected_path) > 1000
+
             result_data = {
                 "total_frames_in_video": total_frames,
                 "frames_analyzed": analyzed_count,
@@ -547,7 +593,11 @@ class VideoAnalysisService:
                 "total_objects_detected": total_objs_found,
                 "detected_classes_summary": class_summary,
                 "snapshots": snapshots,
-                "timeline": timeline
+                "timeline": timeline,
+                "annotated_video_filename": out_detected_filename,
+                "annotated_video_path": out_detected_path,
+                "annotated_video_url": f"/api/autonomous/video/download-detected/{job_id}",
+                "annotated_video_available": annotated_ready
             }
 
             with self._lock:
@@ -555,6 +605,9 @@ class VideoAnalysisService:
                 job["progress_pct"] = 100.0
                 job["completed_at"] = time.time()
                 job["result"] = result_data
+                job["annotated_video_filename"] = out_detected_filename
+                job["annotated_video_path"] = out_detected_path
+                job["annotated_video_url"] = f"/api/autonomous/video/download-detected/{job_id}"
                 job["events"].append({
                     "timestamp": time.strftime("%H:%M:%S"),
                     "type": "COMPLETED",
